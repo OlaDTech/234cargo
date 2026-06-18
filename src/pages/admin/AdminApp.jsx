@@ -1,0 +1,811 @@
+import { useState, useEffect, useRef } from 'react'
+import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil } from 'lucide-react'
+import { useAuth } from '../../hooks/useAuth'
+import { supabase } from '../../lib/supabase'
+import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
+import toast from 'react-hot-toast'
+import { format } from 'date-fns'
+
+export default function AdminApp() {
+  const { profile, signOut } = useAuth()
+  const [tab, setTab] = useState('dashboard')
+  const [stats, setStats] = useState({})
+  const [clients, setClients] = useState([])
+  const [goods, setGoods] = useState([])
+  const [containers, setContainers] = useState([])
+  const [receipts, setReceipts] = useState([])
+  const [expenses, setExpenses] = useState([])
+  const [announcements, setAnnouncements] = useState([])
+  const [suppliers, setSuppliers] = useState([])
+  const [messages, setMessages] = useState([])
+  const [settings, setSettings] = useState({})
+  const [staffList, setStaffList] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  // Modal states
+  const [showContainerDetail, setShowContainerDetail] = useState(null)
+  const [showReceiptGen, setShowReceiptGen] = useState(null)
+  const [showReceiptView, setShowReceiptView] = useState(null)
+  const [showMsgThread, setShowMsgThread] = useState(null)
+  const [replyText, setReplyText] = useState('')
+  const [showAddAnn, setShowAddAnn] = useState(false)
+  const [showAddSup, setShowAddSup] = useState(false)
+  const [showAddCont, setShowAddCont] = useState(false)
+  const [showEditClient, setShowEditClient] = useState(null)
+  const [showEditGoods, setShowEditGoods] = useState(null)
+  const [showExpenseForm, setShowExpenseForm] = useState(null)
+
+  const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
+  const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
+  const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou → Port Klang', status: 'loading', departure_date: '', arrival_date: '' })
+  const [receiptForm, setReceiptForm] = useState({ discount: 0 })
+  const [settingsForm, setSettingsForm] = useState({})
+  const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
+  const reloadTimer = useRef(null)
+
+  useEffect(() => {
+    loadAll()
+
+    const scheduleReload = () => {
+      clearTimeout(reloadTimer.current)
+      reloadTimer.current = setTimeout(() => loadAll(false, false), 250)
+    }
+
+    const channel = supabase.channel('admin-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleReload)
+      .subscribe()
+
+    return () => {
+      clearTimeout(reloadTimer.current)
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  const loadAll = async (showLoader = true, syncForms = true) => {
+    if (showLoader) setLoading(true)
+    const results = await Promise.all([
+      supabase.from('clients').select('*').order('created_at', { ascending: false }),
+      supabase.from('goods').select('*,client:clients(full_name,phone,shipping_mark)').order('created_at', { ascending: false }),
+      supabase.from('containers').select('*').order('created_at', { ascending: false }),
+      supabase.from('receipts').select('*,client:clients(full_name,phone,shipping_mark),goods:goods(description,type)').order('issued_at', { ascending: false }),
+      supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
+      supabase.from('announcements').select('*').order('created_at', { ascending: false }),
+      supabase.from('suppliers').select('*').order('name'),
+      supabase.from('messages').select('*,client:clients(full_name)').order('created_at'),
+      supabase.from('settings').select('key,value'),
+      supabase.from('profiles').select('*').order('full_name'),
+    ])
+    const [c, g, cont, rec, exp, ann, sup, msg, cfg, staff] = results.map(r => r.data || [])
+    setClients(c); setGoods(g); setContainers(cont); setReceipts(rec)
+    setExpenses(exp)
+    setAnnouncements(ann); setSuppliers(sup); setMessages(msg)
+    setStaffList(staff)
+    const cfgMap = Object.fromEntries(cfg.map(r => [r.key, r.value]))
+    setSettings(cfgMap)
+    if (syncForms) setSettingsForm(cfgMap)
+    const totalCbm = g.reduce((s, x) => s + (parseFloat(x.cbm) || 0), 0)
+    const paidIncome = rec.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.total) || 0), 0)
+    const totalExpenses = exp.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)
+    setStats({ clients: c.length, goods: g.length, totalCbm: totalCbm.toFixed(2), inTransit: g.filter(x=>x.status==='in_transit').length, delivered: g.filter(x=>x.status==='delivered').length, receipts: rec.length, containers: cont.length, messages: msg.filter(m=>m.sender==='client').length, paidIncome, totalExpenses, netBalance: paidIncome - totalExpenses })
+    setShowContainerDetail(prev => prev ? (cont.find(x => x.id === prev.id) || prev) : prev)
+    setShowReceiptView(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
+    setShowMsgThread(prev => prev ? (c.find(x => x.id === prev.id) || prev) : prev)
+    if (showLoader) setLoading(false)
+  }
+
+  const saveSettings = async () => {
+    try {
+      await Promise.all(Object.entries(settingsForm).map(([key, value]) =>
+        supabase.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key)
+      ))
+      setSettings(settingsForm)
+      toast.success('Settings saved — all shipping labels updated!')
+    } catch { toast.error('Failed to save settings') }
+  }
+
+  const generateReceipt = async () => {
+    if (!showReceiptGen) return
+    const g = goods.find(x => x.id === showReceiptGen.goods_id)
+    const ratesCbm = parseFloat(settings.sea_rate_cbm || 150)
+    const ratesKg = g?.type === 'air' ? parseFloat(settings.air_rate_kg || 18) : parseFloat(settings.sea_rate_kg || 1.2)
+    const items = g?.type === 'sea'
+      ? [{ desc: 'Sea Freight (CBM)', qty: parseFloat(g.cbm) || 0, unit_price: ratesCbm }, { desc: 'Weight Surcharge', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
+      : [{ desc: 'Air Freight (kg)', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
+    const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0)
+    const discount = parseFloat(receiptForm.discount) || 0
+    const total = subtotal - discount
+    const { data: recNo } = await supabase.rpc('generate_receipt_no')
+    const { error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: showReceiptGen.goods_id, items: JSON.stringify(items), subtotal, discount, total, currency: 'MYR', issued_by: profile?.id })
+    if (error) { toast.error(error.message); return }
+    toast.success('Receipt ' + recNo + ' generated!')
+    setShowReceiptGen(null); setReceiptForm({ discount: 0 }); loadAll()
+  }
+
+  const sendReply = async () => {
+    if (!replyText.trim() || !showMsgThread) return
+    await supabase.from('messages').insert({ client_id: showMsgThread.id, sender: 'admin', message: replyText.trim() })
+    setReplyText('')
+    loadAll()
+  }
+
+  const updateContainerStatus = async (id, status) => {
+    await supabase.from('containers').update({ status }).eq('id', id)
+    // If delivered, update all goods in this container
+    if (status === 'delivered') {
+      await supabase.from('goods').update({ status: 'delivered', updated_at: new Date().toISOString() }).eq('container_id', id)
+    }
+    toast.success('Container updated')
+    loadAll()
+  }
+
+  const togglePermission = async (staffId, perm, current) => {
+    const updated = current.includes(perm) ? current.filter(p => p !== perm) : [...current, perm]
+    await supabase.from('profiles').update({ permissions: updated }).eq('id', staffId)
+    loadAll()
+  }
+
+  const openExpenseForm = (expense = null) => {
+    setShowExpenseForm(expense || {})
+    setExpenseForm(expense ? {
+      title: expense.title || '',
+      category: expense.category || 'Operations',
+      amount: expense.amount || '',
+      expense_date: expense.expense_date || new Date().toISOString().slice(0, 10),
+      notes: expense.notes || '',
+    } : { title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
+  }
+
+  const saveExpense = async () => {
+    if (!expenseForm.title.trim() || !expenseForm.amount) { toast.error('Enter expense title and amount'); return }
+    const payload = { ...expenseForm, amount: parseFloat(expenseForm.amount), recorded_by: profile?.id }
+    const query = showExpenseForm?.id
+      ? supabase.from('expenses').update(payload).eq('id', showExpenseForm.id)
+      : supabase.from('expenses').insert(payload)
+    const { error } = await query
+    if (error) { toast.error(error.message); return }
+    toast.success(showExpenseForm?.id ? 'Expense updated' : 'Expense added')
+    setShowExpenseForm(null)
+    loadAll()
+  }
+
+  const saveEditedGoods = async () => {
+    if (!showEditGoods?.description?.trim()) { toast.error('Description is required'); return }
+    const payload = {
+      description: showEditGoods.description,
+      type: showEditGoods.type,
+      length_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.length_cm) || null : null,
+      width_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.width_cm) || null : null,
+      height_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.height_cm) || null : null,
+      weight_kg: parseFloat(showEditGoods.weight_kg) || 0,
+      tracking_no: showEditGoods.tracking_no || null,
+      status: showEditGoods.status,
+      notes: showEditGoods.notes || '',
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('goods').update(payload).eq('id', showEditGoods.id)
+    if (error) { toast.error(error.message); return }
+    toast.success('Goods updated')
+    setShowEditGoods(null)
+    loadAll()
+  }
+
+  const tabs = [
+    { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
+    { id: 'goods', label: 'Goods', Icon: Package },
+    { id: 'containers', label: 'Containers', Icon: Ship },
+    { id: 'messages', label: 'Messages', Icon: MessageCircle },
+    { id: 'finance', label: 'Finance', Icon: Wallet },
+    { id: 'settings', label: 'Settings', Icon: Settings },
+  ]
+
+  // Group messages by client
+  const clientThreads = clients.map(c => ({
+    ...c,
+    msgs: messages.filter(m => m.client_id === c.id),
+    lastMsg: messages.filter(m => m.client_id === c.id).slice(-1)[0],
+  })).filter(c => c.msgs.length > 0).sort((a,b) => new Date(b.lastMsg?.created_at) - new Date(a.lastMsg?.created_at))
+
+  return (
+    <div className="app-shell">
+      <TopNav role="Admin" title={tab === 'dashboard' ? 'Admin Overview' : tab === 'goods' ? 'Goods Management' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'System Settings'}
+        right={
+          <button onClick={signOut} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12 }}>
+            <LogOut size={14} style={{ display: 'inline', marginRight: 4 }} />Logout
+          </button>
+        }
+      />
+
+      <div className="page">
+
+        {/* OVERVIEW */}
+        {tab === 'dashboard' && (
+          <>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Space Grotesk, sans-serif' }}>Hello, {profile?.full_name?.split(' ')[0]} 👋</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>{format(new Date(), 'EEEE, d MMMM yyyy')}</div>
+            </div>
+
+            <div className="stat-grid">
+              {[
+                { label: 'Total Clients', value: stats.clients, Icon: Users, color: 'var(--blue)' },
+                { label: 'Total Goods', value: stats.goods, Icon: Package, color: 'var(--teal)' },
+                { label: 'Total CBM', value: stats.totalCbm + ' m³', Icon: Boxes, color: 'var(--amber)' },
+                { label: 'In Transit', value: stats.inTransit, Icon: Ship, color: 'var(--amber)' },
+                { label: 'Delivered', value: stats.delivered, Icon: CheckCircle2, color: 'var(--green)' },
+                { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
+                { label: 'Containers', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
+                { label: 'Messages', value: stats.messages, Icon: MessageCircle, color: 'var(--red)' },
+                { label: 'Paid Income', value: 'MYR ' + Number(stats.paidIncome || 0).toFixed(2), Icon: Wallet, color: 'var(--green)' },
+                { label: 'Expenses', value: 'MYR ' + Number(stats.totalExpenses || 0).toFixed(2), Icon: FileText, color: 'var(--red)' },
+              ].map((s, i) => (
+                <div key={i} className="stat-card">
+                  <div className="stat-icon" style={{ background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)' }}><s.Icon size={17} color={s.color} /></div>
+                  <div className="stat-value">{s.value ?? '—'}</div>
+                  <div className="stat-label">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Staff permissions */}
+            <SectionHeader title="Staff Accounts" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{staffList.length} members</span>} />
+            {staffList.map(s => (
+              <div key={s.id} className="card">
+                <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{s.full_name} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>· {s.role}</span></div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>{s.phone}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['dashboard','clients','goods','scan'].map(perm => {
+                    const has = (s.permissions || []).includes(perm)
+                    return (
+                      <button key={perm} onClick={() => togglePermission(s.id, perm, s.permissions || [])} style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: has ? 'var(--teal)' : 'var(--surface)', color: has ? 'var(--navy)' : 'var(--muted)', fontWeight: has ? 700 : 400, fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}>
+                        {perm}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Announcements */}
+            <SectionHeader title="Announcements" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddAnn(true)}>+ New</button>} />
+            {announcements.map(a => (
+              <div key={a.id} className="card" style={{ borderLeft: `4px solid ${a.is_important ? 'var(--danger)' : 'var(--teal)'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>{a.title}</div>
+                  <button onClick={async () => { await supabase.from('announcements').delete().eq('id', a.id); loadAll() }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: 16, padding: '0 4px', flexShrink: 0 }}>✕</button>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{a.body.slice(0, 100)}…</div>
+              </div>
+            ))}
+
+            {/* Suppliers */}
+            <SectionHeader title="Suppliers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddSup(true)}>+ Add</button>} />
+            {suppliers.map(s => (
+              <div key={s.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{s.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{s.category} · {s.contact}</div>
+                  </div>
+                  <button onClick={async () => { await supabase.from('suppliers').delete().eq('id', s.id); loadAll() }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: 16 }}>✕</button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* GOODS MANAGEMENT */}
+        {tab === 'goods' && (
+          <>
+            <SectionHeader title={`All Goods (${goods.length})`} />
+            {loading ? <SkeletonList /> : goods.map(g => {
+              const hasReceipt = receipts.find(r => r.goods_id === g.id)
+              return (
+                <div key={g.id} className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, flex: 1, paddingRight: 8 }}>{g.description}</div>
+                    <StatusPill status={g.status} />
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+                    <span style={{ color: 'var(--teal-dark)', fontWeight: 600 }}>{g.client?.full_name}</span>
+                    {g.type === 'sea' && g.cbm ? ` · ${g.cbm} CBM` : ''} · {g.weight_kg} kg
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
+                    <TypePill type={g.type} />
+                    {g.tracking_no && <span style={{ fontSize: 11, color: 'var(--muted)', padding: '2px 8px', background: 'var(--surface)', borderRadius: 20 }}>{g.tracking_no}</span>}
+                  </div>
+                  <PhotoGallery photos={g.photos?.slice(0, 4)} compact />
+                  {/* Container assignment */}
+                  <div style={{ marginBottom: 8 }}>
+                    <select className="input-field" style={{ fontSize: 13, padding: '7px 10px' }}
+                      value={g.container_id || ''}
+                      onChange={async e => {
+                        await supabase.from('goods').update({ container_id: e.target.value || null }).eq('id', g.id)
+                        toast.success('Container assigned'); loadAll()
+                      }}>
+                      <option value="">Assign to container…</option>
+                      {containers.filter(c => c.status !== 'delivered').map(c => <option key={c.id} value={c.id}>{c.container_no} ({c.status})</option>)}
+                    </select>
+                  </div>
+                  {/* Status change */}
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
+                    {['in_warehouse','in_transit','delivered'].map(s => (
+                      <button key={s} onClick={async () => { await supabase.from('goods').update({ status: s }).eq('id', g.id); toast.success('Updated'); loadAll() }} style={{ fontSize: 11, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: g.status === s ? 'var(--teal)' : 'var(--surface)', color: g.status === s ? 'var(--navy)' : 'var(--muted)', cursor: 'pointer', fontWeight: g.status === s ? 700 : 400, fontFamily: 'Inter, sans-serif' }}>
+                        {s.replace('_',' ')}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Receipt */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => setShowEditGoods(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
+                    {!hasReceipt ? (
+                      <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
+                    ) : (
+                      <button onClick={() => setShowReceiptView(hasReceipt)} className="btn btn-sm btn-ghost">View Receipt</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+
+        {/* CONTAINERS */}
+        {tab === 'containers' && (
+          <>
+            <SectionHeader title="Containers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddCont(true)}>+ New</button>} />
+            {loading ? <SkeletonList /> : containers.map(c => {
+              const cGoods = goods.filter(g => g.container_id === c.id)
+              const totalCbm = cGoods.reduce((s, g) => s + (parseFloat(g.cbm) || 0), 0)
+              return (
+                <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowContainerDetail(c)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 16 }}>{c.container_no}</div>
+                    <StatusPill status={c.status} />
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>{c.route} · {c.type}</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
+                    Dep {fmtDate(c.departure_date)} → ETA {fmtDate(c.arrival_date)}
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
+                    <span style={{ color: 'var(--info)' }}>{cGoods.length} items</span>
+                    <span style={{ color: 'var(--amber)' }}>{totalCbm.toFixed(2)} CBM</span>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Parking list */}
+            <div style={{ marginTop: 24 }}>
+              <SectionHeader title="Parking List" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>Unassigned goods</span>} />
+              {goods.filter(g => !g.container_id).map(g => (
+                <div key={g.id} className="card card-sm">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{g.description}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.client?.full_name} · {g.type === 'sea' && g.cbm ? g.cbm + ' CBM · ' : ''}{g.weight_kg} kg</div>
+                    </div>
+                    <TypePill type={g.type} />
+                  </div>
+                  <select className="input-field" style={{ fontSize: 13, padding: '7px 10px' }} defaultValue=""
+                    onChange={async e => {
+                      if (!e.target.value) return
+                      await supabase.from('goods').update({ container_id: e.target.value }).eq('id', g.id)
+                      toast.success('Assigned!'); loadAll()
+                    }}>
+                    <option value="">Assign to container…</option>
+                    {containers.filter(c => c.status !== 'delivered').map(c => <option key={c.id} value={c.id}>{c.container_no}</option>)}
+                  </select>
+                </div>
+              ))}
+              {goods.filter(g => !g.container_id).length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 16 }}>All goods have been assigned to containers.</div>}
+            </div>
+          </>
+        )}
+
+        {/* MESSAGES */}
+        {tab === 'messages' && (
+          <>
+            <SectionHeader title="Client Messages" />
+            {clientThreads.length === 0 ? <EmptyState icon="chat" title="No messages yet" /> : clientThreads.map(c => (
+              <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowMsgThread(c)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--navy)', color: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                    {c.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{c.full_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.lastMsg?.message}</div>
+                  </div>
+                  <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtAgo(c.lastMsg?.created_at)}</div>
+                    {c.msgs.filter(m => m.sender === 'client').length > 0 && (
+                      <div style={{ background: 'var(--danger)', color: 'var(--white)', borderRadius: '50%', width: 20, height: 20, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 4, marginLeft: 'auto' }}>
+                        {c.msgs.filter(m => m.sender === 'client').length}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* FINANCE */}
+        {tab === 'finance' && (
+          <>
+            <SectionHeader title="Financial Summary" action={<button className="btn btn-sm btn-primary" onClick={() => openExpenseForm()}>+ Expense</button>} />
+            <div className="stat-grid">
+              {[
+                { label: 'Paid Income', value: 'MYR ' + Number(stats.paidIncome || 0).toFixed(2), Icon: Wallet, color: 'var(--green)' },
+                { label: 'Unpaid Invoices', value: 'MYR ' + receipts.filter(r => r.status === 'unpaid').reduce((s, r) => s + (parseFloat(r.total) || 0), 0).toFixed(2), Icon: ReceiptText, color: 'var(--amber)' },
+                { label: 'Expenses', value: 'MYR ' + Number(stats.totalExpenses || 0).toFixed(2), Icon: FileText, color: 'var(--red)' },
+                { label: 'Net Balance', value: 'MYR ' + Number(stats.netBalance || 0).toFixed(2), Icon: Boxes, color: Number(stats.netBalance || 0) >= 0 ? 'var(--green)' : 'var(--red)' },
+              ].map((s, i) => (
+                <div key={i} className="stat-card">
+                  <div className="stat-icon" style={{ background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)' }}><s.Icon size={17} color={s.color} /></div>
+                  <div className="stat-value" style={{ fontSize: 17 }}>{s.value}</div>
+                  <div className="stat-label">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <SectionHeader title="Expenses" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{expenses.length} records</span>} />
+            <div className="card" style={{ padding: 8, overflowX: 'auto' }}>
+              {expenses.length === 0 ? <EmptyState icon="box" title="No expenses yet" text="Add rent, freight, handling, staff, or operating costs here." /> : (
+                <table className="finance-table">
+                  <thead>
+                    <tr><th>Date</th><th>Expense</th><th>Category</th><th>Amount</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {expenses.map(exp => (
+                      <tr key={exp.id}>
+                        <td>{fmtDate(exp.expense_date)}</td>
+                        <td><div style={{ fontWeight: 600 }}>{exp.title}</div>{exp.notes && <div style={{ color: 'var(--muted)', fontSize: 12 }}>{exp.notes}</div>}</td>
+                        <td>{exp.category}</td>
+                        <td className="amount-expense">MYR {Number(exp.amount || 0).toFixed(2)}</td>
+                        <td><button className="btn btn-xs btn-secondary" onClick={() => openExpenseForm(exp)}><Pencil size={12} />Edit</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <SectionHeader title="Receipt Income" />
+            <div className="card" style={{ padding: 8, overflowX: 'auto' }}>
+              <table className="finance-table">
+                <thead>
+                  <tr><th>Date</th><th>Receipt</th><th>Client</th><th>Status</th><th>Total</th></tr>
+                </thead>
+                <tbody>
+                  {receipts.map(r => (
+                    <tr key={r.id}>
+                      <td>{fmtDate(r.issued_at)}</td>
+                      <td>{r.receipt_no}</td>
+                      <td>{r.client?.full_name}</td>
+                      <td>{r.status}</td>
+                      <td className="amount-income">MYR {Number(r.total || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* SETTINGS */}
+        {tab === 'settings' && (
+          <>
+            <SectionHeader title="System Settings" action={<span style={{ fontSize: 11, color: 'var(--muted)' }}>Admin only</span>} />
+            <div className="banner banner-warn" style={{ marginBottom: 16 }}>Changes here update all shipping labels immediately.</div>
+
+            <div className="card">
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>China Warehouse</div>
+              {[
+                ['china_warehouse_name', 'Warehouse Name'],
+                ['china_warehouse_address', 'Warehouse Address'],
+                ['china_warehouse_phone', 'Warehouse Phone'],
+              ].map(([k, l]) => (
+                <div key={k} className="input-group">
+                  <label className="input-label">{l}</label>
+                  <input className="input-field" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
+                </div>
+              ))}
+            </div>
+
+            <div className="card">
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>Company Info</div>
+              <div className="input-group">
+                <label className="input-label">Company Name</label>
+                <input className="input-field" value={settingsForm.company_name || ''} onChange={e => setSettingsForm(p => ({...p, company_name: e.target.value}))} />
+              </div>
+            </div>
+
+            <div className="card">
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>Rates</div>
+              {[['sea_rate_cbm','Sea Freight Rate (MYR/CBM)'],['sea_rate_kg','Sea Surcharge (MYR/kg)'],['air_rate_kg','Air Freight Rate (MYR/kg)']].map(([k,l]) => (
+                <div key={k} className="input-group">
+                  <label className="input-label">{l}</label>
+                  <input className="input-field" type="number" step="0.01" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
+                </div>
+              ))}
+            </div>
+
+            <button className="btn btn-primary btn-full" onClick={saveSettings} style={{ padding: 14, fontSize: 16 }}>Save All Settings</button>
+
+            {/* Preview label */}
+            {clients[0] && (
+              <div style={{ marginTop: 20 }}>
+                <SectionHeader title="Label Preview" />
+                <ShippingLabel client={clients[0]} settings={settingsForm} />
+              </div>
+            )}
+          </>
+        )}
+
+      </div>
+
+      <BottomNav tabs={tabs} active={tab} onChange={setTab} />
+
+      {/* Container detail */}
+      <Modal open={!!showContainerDetail} title="Container Details" onClose={() => setShowContainerDetail(null)}>
+        {showContainerDetail && (
+          <>
+            <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{showContainerDetail.container_no}</div>
+            <StatusPill status={showContainerDetail.status} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '16px 0' }}>
+              {[['Type',showContainerDetail.type],['Route',showContainerDetail.route],['Departure',fmtDate(showContainerDetail.departure_date)],['ETA',fmtDate(showContainerDetail.arrival_date)]].map(([k,v]) => (
+                <div key={k} style={{ background: 'var(--surface)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{k}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+              {['loading','in_transit','delivered'].map(s => (
+                <button key={s} onClick={() => updateContainerStatus(showContainerDetail.id, s)} style={{ flex: 1, padding: '8px 6px', borderRadius: 8, border: '1px solid var(--border)', background: showContainerDetail.status === s ? 'var(--teal)' : 'var(--surface)', color: showContainerDetail.status === s ? 'var(--navy)' : 'var(--muted)', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Goods in this container</div>
+            {goods.filter(g => g.container_id === showContainerDetail.id).map(g => (
+              <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{g.description}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.client?.full_name} · {g.type === 'sea' && g.cbm ? g.cbm + ' CBM · ' : ''}{g.weight_kg} kg</div>
+                </div>
+                <StatusPill status={g.status} />
+              </div>
+            ))}
+          </>
+        )}
+      </Modal>
+
+      {/* Goods edit */}
+      <Modal open={!!showEditGoods} title="Edit Goods" onClose={() => setShowEditGoods(null)}>
+        {showEditGoods && (
+          <>
+            <div className="input-group">
+              <label className="input-label">Description</label>
+              <input className="input-field" value={showEditGoods.description || ''} onChange={e => setShowEditGoods(p => ({ ...p, description: e.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Type</label>
+              <select className="input-field" value={showEditGoods.type || 'sea'} onChange={e => setShowEditGoods(p => ({ ...p, type: e.target.value }))}>
+                <option value="sea">Sea</option>
+                <option value="air">Air</option>
+              </select>
+            </div>
+            {showEditGoods.type === 'sea' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                {['length_cm','width_cm','height_cm'].map(k => (
+                  <div key={k} className="input-group">
+                    <label className="input-label">{k.replace('_cm', '').toUpperCase()} cm</label>
+                    <input className="input-field" type="number" value={showEditGoods[k] || ''} onChange={e => setShowEditGoods(p => ({ ...p, [k]: e.target.value }))} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="input-group">
+              <label className="input-label">Weight kg</label>
+              <input className="input-field" type="number" step="0.1" value={showEditGoods.weight_kg || ''} onChange={e => setShowEditGoods(p => ({ ...p, weight_kg: e.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Tracking Number</label>
+              <input className="input-field" value={showEditGoods.tracking_no || ''} onChange={e => setShowEditGoods(p => ({ ...p, tracking_no: e.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Status</label>
+              <select className="input-field" value={showEditGoods.status || 'in_warehouse'} onChange={e => setShowEditGoods(p => ({ ...p, status: e.target.value }))}>
+                <option value="in_warehouse">In Warehouse</option>
+                <option value="in_transit">In Transit</option>
+                <option value="delivered">Delivered</option>
+              </select>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Notes</label>
+              <textarea className="input-field" rows={3} value={showEditGoods.notes || ''} onChange={e => setShowEditGoods(p => ({ ...p, notes: e.target.value }))} />
+            </div>
+            <PhotoGallery photos={showEditGoods.photos} />
+            <button className="btn btn-primary btn-full" onClick={saveEditedGoods} style={{ marginTop: 14 }}>Save Changes</button>
+          </>
+        )}
+      </Modal>
+
+      {/* Expense form */}
+      <Modal open={!!showExpenseForm} title={showExpenseForm?.id ? 'Edit Expense' : 'Add Expense'} onClose={() => setShowExpenseForm(null)}>
+        <div className="input-group">
+          <label className="input-label">Expense Title</label>
+          <input className="input-field" value={expenseForm.title} onChange={e => setExpenseForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Warehouse rent, fuel, staff allowance" />
+        </div>
+        <div className="input-group">
+          <label className="input-label">Category</label>
+          <select className="input-field" value={expenseForm.category} onChange={e => setExpenseForm(p => ({ ...p, category: e.target.value }))}>
+            {['Operations','Freight','Warehouse','Staff','Transport','Supplies','Other'].map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="input-group">
+            <label className="input-label">Amount (MYR)</label>
+            <input className="input-field" type="number" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm(p => ({ ...p, amount: e.target.value }))} />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Date</label>
+            <input className="input-field" type="date" value={expenseForm.expense_date} onChange={e => setExpenseForm(p => ({ ...p, expense_date: e.target.value }))} />
+          </div>
+        </div>
+        <div className="input-group">
+          <label className="input-label">Notes</label>
+          <textarea className="input-field" rows={3} value={expenseForm.notes} onChange={e => setExpenseForm(p => ({ ...p, notes: e.target.value }))} />
+        </div>
+        <button className="btn btn-primary btn-full" onClick={saveExpense}>Save Expense</button>
+      </Modal>
+
+      {/* Receipt generate */}
+      <Modal open={!!showReceiptGen} title="Generate Receipt" onClose={() => setShowReceiptGen(null)}>
+        {showReceiptGen && (
+          <>
+            <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Client</div>
+              <div style={{ fontWeight: 600 }}>{clients.find(c=>c.id===showReceiptGen.client_id)?.full_name}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Goods</div>
+              <div style={{ fontWeight: 600 }}>{showReceiptGen.goods?.description}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
+                {showReceiptGen.goods?.type === 'sea'
+                  ? `Rate: MYR ${settings.sea_rate_cbm}/CBM + MYR ${settings.sea_rate_kg}/kg`
+                  : `Rate: MYR ${settings.air_rate_kg}/kg`}
+              </div>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Discount (MYR)</label>
+              <input className="input-field" type="number" min="0" step="0.01" placeholder="0.00" value={receiptForm.discount} onChange={e => setReceiptForm(p=>({...p, discount: e.target.value}))} />
+            </div>
+            <button className="btn btn-primary btn-full" onClick={generateReceipt} style={{ padding: 13 }}>Generate & Issue Receipt</button>
+          </>
+        )}
+      </Modal>
+
+      {/* Receipt view */}
+      <Modal open={!!showReceiptView} title="Receipt" onClose={() => setShowReceiptView(null)}>
+        <ReceiptView receipt={showReceiptView} client={clients.find(c=>c.id===showReceiptView?.client_id)} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {showReceiptView?.status === 'unpaid' && (
+            <button className="btn btn-primary btn-full" onClick={async () => {
+              await supabase.from('receipts').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', showReceiptView.id)
+              toast.success('Marked as paid'); setShowReceiptView(null); loadAll()
+            }}>Mark as Paid</button>
+          )}
+          <button className="btn btn-secondary btn-full" onClick={() => window.print()}>Print</button>
+        </div>
+      </Modal>
+
+      {/* Message thread */}
+      <Modal open={!!showMsgThread} title={'Chat — ' + showMsgThread?.full_name} onClose={() => { setShowMsgThread(null); setReplyText('') }}>
+        {showMsgThread && (
+          <>
+            <div style={{ maxHeight: 340, overflow: 'auto', marginBottom: 12 }}>
+              {messages.filter(m => m.client_id === showMsgThread.id).map(m => (
+                <div key={m.id} style={{ display: 'flex', justifyContent: m.sender === 'client' ? 'flex-start' : 'flex-end', marginBottom: 10 }}>
+                  <div style={{ maxWidth: '80%' }}>
+                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3, textAlign: m.sender === 'client' ? 'left' : 'right' }}>
+                      {m.sender === 'client' ? showMsgThread.full_name : 'You (Admin)'}
+                    </div>
+                    <div className={m.sender === 'client' ? 'bubble-client' : 'bubble-admin'} style={{ padding: '10px 14px', fontSize: 14, lineHeight: 1.5 }}>
+                      {m.message}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input className="input-field" style={{ flex: 1, margin: 0 }} placeholder="Type a reply…" value={replyText}
+                onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()} />
+              <button className="btn btn-primary" onClick={sendReply} style={{ padding: '11px 16px' }}>Send</button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* Add Announcement */}
+      <Modal open={showAddAnn} title="New Announcement" onClose={() => setShowAddAnn(false)}>
+        <div className="input-group">
+          <label className="input-label">Title</label>
+          <input className="input-field" placeholder="Announcement title" value={newAnn.title} onChange={e => setNewAnn(p=>({...p,title:e.target.value}))} />
+        </div>
+        <div className="input-group">
+          <label className="input-label">Message</label>
+          <textarea className="input-field" rows={4} value={newAnn.body} onChange={e => setNewAnn(p=>({...p,body:e.target.value}))} placeholder="Write your announcement…" />
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+          <input type="checkbox" checked={newAnn.is_important} onChange={e => setNewAnn(p=>({...p,is_important:e.target.checked}))} />
+          Mark as important
+        </label>
+        <button className="btn btn-primary btn-full" onClick={async () => {
+          if (!newAnn.title || !newAnn.body) return
+          await supabase.from('announcements').insert({ ...newAnn, created_by: profile?.id })
+          toast.success('Announcement published!'); setShowAddAnn(false); setNewAnn({ title:'',body:'',is_important:false }); loadAll()
+        }} style={{ padding: 13 }}>Publish Announcement</button>
+      </Modal>
+
+      {/* Add Supplier */}
+      <Modal open={showAddSup} title="Add Supplier" onClose={() => setShowAddSup(false)}>
+        {[['name','Supplier Name','e.g. Yiwu Wholesale Market'],['contact','Contact Number','+86 xxx-xxxx-xxxx'],['category','Category','Electronics, Clothing…'],['address','Address','City, Province']].map(([k,l,p]) => (
+          <div key={k} className="input-group">
+            <label className="input-label">{l}</label>
+            <input className="input-field" placeholder={p} value={newSup[k]} onChange={e => setNewSup(prev=>({...prev,[k]:e.target.value}))} />
+          </div>
+        ))}
+        <div className="input-group">
+          <label className="input-label">Notes (optional)</label>
+          <textarea className="input-field" rows={2} value={newSup.notes} onChange={e => setNewSup(p=>({...p,notes:e.target.value}))} />
+        </div>
+        <button className="btn btn-primary btn-full" onClick={async () => {
+          if (!newSup.name) return
+          await supabase.from('suppliers').insert(newSup)
+          toast.success('Supplier added!'); setShowAddSup(false); setNewSup({ name:'',contact:'',category:'',address:'',notes:'' }); loadAll()
+        }} style={{ padding: 13 }}>Add Supplier</button>
+      </Modal>
+
+      {/* Add Container */}
+      <Modal open={showAddCont} title="New Container" onClose={() => setShowAddCont(false)}>
+        {[['container_no','Container Number','e.g. CONT-2501-A'],['route','Route','e.g. Guangzhou → Port Klang']].map(([k,l,p]) => (
+          <div key={k} className="input-group">
+            <label className="input-label">{l}</label>
+            <input className="input-field" placeholder={p} value={newCont[k]} onChange={e => setNewCont(p=>({...p,[k]:e.target.value}))} />
+          </div>
+        ))}
+        <div className="input-group">
+          <label className="input-label">Type</label>
+          <select className="input-field" value={newCont.type} onChange={e => setNewCont(p=>({...p,type:e.target.value}))}>
+            <option value="20ft">20ft</option><option value="40ft">40ft</option><option value="40hc">40HC</option><option value="air">Air</option>
+          </select>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="input-group">
+            <label className="input-label">Departure Date</label>
+            <input className="input-field" type="date" value={newCont.departure_date} onChange={e => setNewCont(p=>({...p,departure_date:e.target.value}))} />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Arrival Date (ETA)</label>
+            <input className="input-field" type="date" value={newCont.arrival_date} onChange={e => setNewCont(p=>({...p,arrival_date:e.target.value}))} />
+          </div>
+        </div>
+        <button className="btn btn-primary btn-full" onClick={async () => {
+          if (!newCont.container_no) return
+          await supabase.from('containers').insert(newCont)
+          toast.success('Container created!'); setShowAddCont(false); setNewCont({ container_no:'',type:'20ft',route:'Guangzhou → Port Klang',status:'loading',departure_date:'',arrival_date:'' }); loadAll()
+        }} style={{ padding: 13 }}>Create Container</button>
+      </Modal>
+    </div>
+  )
+}
