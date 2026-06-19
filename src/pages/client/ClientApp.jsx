@@ -224,28 +224,28 @@ export default function ClientApp() {
 
         {/* CHAT */}
         {tab === 'chat' && (
-          <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
+          <div className="chat-layout">
             <SectionHeader title="Messages" />
-            <div style={{ flex: 1, overflow: 'auto', paddingBottom: 12 }}>
+            <div className="chat-list">
               {loading ? <SkeletonList n={3} /> : messages.length === 0 ? (
                 <EmptyState icon="chat" title="No messages yet" text="Send us a message and our team will get back to you." />
               ) : messages.map(m => (
-                <div key={m.id} style={{ display: 'flex', justifyContent: m.sender === 'client' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
-                  <div style={{ maxWidth: '78%' }}>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3, textAlign: m.sender === 'client' ? 'right' : 'left' }}>
+                <div key={m.id} className={`chat-row ${m.sender === 'client' ? 'chat-row-out' : 'chat-row-in'}`}>
+                  <div className="chat-message">
+                    <div className={`chat-meta ${m.sender === 'client' ? 'chat-meta-out' : ''}`}>
                       {m.sender === 'client' ? 'You' : 'OceanAir Team'} · {fmtAgo(m.created_at)}
                     </div>
-                    <div className={m.sender === 'client' ? 'bubble-client' : 'bubble-admin'} style={{ padding: '10px 14px', fontSize: 14, lineHeight: 1.5 }}>
+                    <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
                       {m.message}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-              <input className="input-field" style={{ flex: 1, margin: 0 }} placeholder="Type a message…" value={msgText}
+            <div className="chat-composer">
+              <input className="input-field" style={{ margin: 0 }} placeholder="Type a message…" value={msgText}
                 onChange={e => setMsgText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMsg()} />
-              <button className="btn btn-primary" onClick={sendMsg} style={{ padding: '11px 16px' }}>Send</button>
+              <button className="btn btn-primary chat-send" onClick={sendMsg}>Send</button>
             </div>
           </div>
         )}

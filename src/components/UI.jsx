@@ -248,7 +248,7 @@ export function PhotoGallery({ photos = [], compact = false }) {
         ))}
       </div>
       <Modal open={!!active} title="Goods Photo" onClose={() => setActive(null)}>
-        {active && <img src={active} alt="Goods" style={{ width: '100%', borderRadius: 12, display: 'block' }} />}
+        {active && <img src={active} alt="Goods" className="photo-preview-img" />}
       </Modal>
     </>
   )

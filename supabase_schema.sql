@@ -391,26 +391,6 @@ end;
 $$;
 
 -- ============================================================
--- SAMPLE DATA (remove in production)
--- ============================================================
-
-insert into announcements (title, body, is_important) values
-  ('CNY Holiday Notice', 'China warehouse closed 28 Jan – 10 Feb for Chinese New Year. Please plan your shipments early.', true),
-  ('New Air Freight Route', 'Express air freight Guangzhou → KL now available. 3–5 business days. Contact us for rates.', false)
-on conflict do nothing;
-
-insert into suppliers (name, contact, category, address) values
-  ('Yiwu Wholesale Market', '+86 579-8800-1234', 'General Goods', 'Yiwu, Zhejiang'),
-  ('Guangzhou Electronics Hub', '+86 020-7777-9999', 'Electronics', 'Tianhe, Guangzhou'),
-  ('Shenzhen Tech Supplies', '+86 755-3322-5566', 'Tech Components', 'Futian, Shenzhen')
-on conflict do nothing;
-
-insert into containers (container_no, type, route, status, departure_date, arrival_date) values
-  ('CONT-2501-A', '20ft', 'Guangzhou → Port Klang', 'in_transit', '2025-01-15', '2025-02-05'),
-  ('CONT-2501-B', '40ft', 'Guangzhou → Port Klang', 'loading', '2025-01-28', '2025-02-18')
-on conflict do nothing;
-
--- ============================================================
 -- STORAGE BUCKET (run separately if needed)
 -- ============================================================
 insert into storage.buckets (id, name, public)

@@ -168,13 +168,14 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .photo-thumb { width: 64px; height: 64px; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--surface), var(--surface2)); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
 .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .photo-add { width: 64px; height: 64px; border-radius: var(--radius-sm); border: 1.5px dashed var(--line2); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--t3); background: var(--surface); }
-.photo-strip, .photo-gallery { display: grid; gap: 8px; margin-top: 10px; }
-.photo-strip { grid-template-columns: repeat(4, 52px); }
-.photo-gallery { grid-template-columns: repeat(3, 1fr); }
-.photo-strip-item, .photo-gallery-item { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-sm); overflow: hidden; padding: 0; cursor: pointer; display: block; }
+.photo-strip, .photo-gallery { display: grid; gap: 8px; margin-top: 10px; max-width: 100%; }
+.photo-strip { grid-template-columns: repeat(auto-fill, 52px); }
+.photo-gallery { grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); }
+.photo-strip-item, .photo-gallery-item { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-sm); overflow: hidden; padding: 0; cursor: pointer; display: block; min-width: 0; }
 .photo-strip-item { width: 52px; height: 52px; }
 .photo-gallery-item { aspect-ratio: 1; }
 .photo-strip-item img, .photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-preview-img { width: 100%; max-height: 70vh; border-radius: 12px; display: block; object-fit: contain; background: var(--ink); }
 .finance-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .finance-table th { text-align: left; color: var(--t3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; padding: 9px 6px; border-bottom: 1px solid var(--line); }
 .finance-table td { padding: 10px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -198,8 +199,20 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .cbm-result-value { font-size: 20px; font-weight: 700; color: var(--teal); font-family: 'Space Grotesk', sans-serif; letter-spacing: -0.4px; }
 .cbm-result-label { font-size: 11px; color: rgba(255,255,255,0.55); }
 
+.chat-layout { height: 100%; min-height: calc(100vh - 184px); display: flex; flex-direction: column; overflow: hidden; }
+.chat-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 2px 12px; }
+.modal-chat-list { max-height: min(48vh, 380px); margin-bottom: 12px; }
+.chat-row { width: 100%; display: flex; margin-bottom: 10px; }
+.chat-row-in { justify-content: flex-start; }
+.chat-row-out { justify-content: flex-end; }
+.chat-message { max-width: min(82%, 340px); min-width: 0; }
+.chat-meta { font-size: 10px; color: var(--muted); margin-bottom: 3px; line-height: 1.35; }
+.chat-meta-out { text-align: right; }
+.chat-bubble { padding: 10px 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .bubble-client { background: var(--teal); color: #fff; border-radius: 14px 14px 4px 14px; }
 .bubble-admin { background: var(--white); color: var(--t1); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; }
+.chat-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.chat-send { padding: 11px 16px; min-width: 68px; }
 
 .fab { position: fixed; bottom: 84px; right: calc(50% - 220px); width: 52px; height: 52px; border-radius: 50%; background: var(--teal); color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(14,159,142,0.35); z-index: 90; }
 .fab:active { transform: scale(0.94); }

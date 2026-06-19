@@ -713,24 +713,24 @@ export default function AdminApp() {
       <Modal open={!!showMsgThread} title={'Chat — ' + showMsgThread?.full_name} onClose={() => { setShowMsgThread(null); setReplyText('') }}>
         {showMsgThread && (
           <>
-            <div style={{ maxHeight: 340, overflow: 'auto', marginBottom: 12 }}>
+            <div className="chat-list modal-chat-list">
               {messages.filter(m => m.client_id === showMsgThread.id).map(m => (
-                <div key={m.id} style={{ display: 'flex', justifyContent: m.sender === 'client' ? 'flex-start' : 'flex-end', marginBottom: 10 }}>
-                  <div style={{ maxWidth: '80%' }}>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3, textAlign: m.sender === 'client' ? 'left' : 'right' }}>
+                <div key={m.id} className={`chat-row ${m.sender === 'client' ? 'chat-row-in' : 'chat-row-out'}`}>
+                  <div className="chat-message">
+                    <div className={`chat-meta ${m.sender === 'client' ? '' : 'chat-meta-out'}`}>
                       {m.sender === 'client' ? showMsgThread.full_name : 'You (Admin)'}
                     </div>
-                    <div className={m.sender === 'client' ? 'bubble-client' : 'bubble-admin'} style={{ padding: '10px 14px', fontSize: 14, lineHeight: 1.5 }}>
+                    <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
                       {m.message}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input className="input-field" style={{ flex: 1, margin: 0 }} placeholder="Type a reply…" value={replyText}
+            <div className="chat-composer">
+              <input className="input-field" style={{ margin: 0 }} placeholder="Type a reply…" value={replyText}
                 onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()} />
-              <button className="btn btn-primary" onClick={sendReply} style={{ padding: '11px 16px' }}>Send</button>
+              <button className="btn btn-primary chat-send" onClick={sendReply}>Send</button>
             </div>
           </>
         )}
