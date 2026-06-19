@@ -6,9 +6,10 @@ import { Icons } from '../components/Icons'
 
 export default function LoginPage() {
   const { signInStaff, signInClient } = useAuth()
-  const [view, setView] = useState('home')
-  const [mode, setMode] = useState('client')
-  const [loginRole, setLoginRole] = useState('client')
+  const initialRole = window.location.hash === '#/admin-login' ? 'admin' : window.location.hash === '#/staff-login' ? 'staff' : window.location.hash === '#/client-login' ? 'client' : null
+  const [view, setView] = useState(initialRole ? 'login' : 'home')
+  const [mode, setMode] = useState(initialRole === 'admin' || initialRole === 'staff' ? 'staff' : 'client')
+  const [loginRole, setLoginRole] = useState(initialRole || 'client')
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
@@ -19,6 +20,7 @@ export default function LoginPage() {
     setLoginRole(role)
     setMode(role === 'client' ? 'client' : 'staff')
     setError('')
+    window.location.hash = `/${role}-login`
     setView('login')
   }
 
@@ -61,7 +63,7 @@ export default function LoginPage() {
       <main className="public-site">
         <nav className="public-nav">
           <button className="public-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><span>234</span> Cargo</button>
-          <div className="public-nav-actions"><button onClick={() => openLogin('client')} className="public-link">Client Login</button><button onClick={() => openLogin('staff')} className="public-link">Staff</button><button onClick={() => openLogin('admin')} className="public-link">Admin</button></div>
+          <div className="public-nav-actions"><button onClick={() => openLogin('client')} className="public-link">Client Login</button></div>
         </nav>
 
         <section className="public-hero">
@@ -87,7 +89,7 @@ export default function LoginPage() {
   return (
     <div className="login-bg">
       <div className="login-shell">
-        <button className="login-back" onClick={() => { setView('home'); setError('') }}>Back to homepage</button>
+        <button className="login-back" onClick={() => { window.history.replaceState(null, '', window.location.pathname); setView('home'); setError('') }}>Back to homepage</button>
         <div className="login-intro"><div className="login-logo">234</div><div><div className="login-company">234 Cargo</div><div className="login-subtitle">{heading}</div></div></div>
         <div className="login-card">
           <div className="login-heading">Welcome back</div><div className="login-copy">{mode === 'client' ? 'Sign in with your phone number or shipping mark.' : 'Sign in with your assigned work email.'}</div>
@@ -96,7 +98,7 @@ export default function LoginPage() {
           <button className="btn btn-primary btn-full" style={{ marginTop: 18 }} onClick={mode === 'client' ? handleClientLogin : handleStaffLogin} disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
           <div className="login-help">{mode === 'client' ? 'Contact 234 Cargo if you need help accessing your portal.' : 'Your administrator creates staff and admin accounts.'}</div>
         </div>
-        <div className="login-switch">{mode === 'client' ? <><button onClick={() => openLogin('staff')}>Staff login</button><button onClick={() => openLogin('admin')}>Admin login</button></> : <button onClick={() => openLogin('client')}>Client login</button>}</div>
+        {mode !== 'client' && <div className="login-switch"><button onClick={() => openLogin('client')}>Client login</button></div>}
       </div>
     </div>
   )
