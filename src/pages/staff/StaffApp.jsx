@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 
 export default function StaffApp() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, hasPermission } = useAuth()
   const [tab, setTab] = useState('dashboard')
   const [stats, setStats] = useState(null)
   const [clients, setClients] = useState([])
@@ -101,7 +101,11 @@ export default function StaffApp() {
     { id: 'clients', label: 'Clients', Icon: Users },
     { id: 'goods', label: 'Goods', Icon: Package },
     { id: 'scan', label: 'Scan', Icon: ScanLine },
-  ]
+  ].filter(item => hasPermission(item.id))
+
+  useEffect(() => {
+    if (tabs.length && !tabs.some(item => item.id === tab)) setTab(tabs[0].id)
+  }, [profile, tab])
 
   return (
     <div className="app-shell">

@@ -4,8 +4,8 @@ import { ScannerModal, CBMCalculator, PhotoUploader, Input, Select, Textarea, In
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
-const EMPTY_SEA = { description: '', length_cm: '', width_cm: '', height_cm: '', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
-const EMPTY_AIR = { description: '', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
+const EMPTY_SEA = { description: '', length_cm: '', width_cm: '', height_cm: '', quantity: '1', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
+const EMPTY_AIR = { description: '', quantity: '1', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
 
 function normalizeClientScan(value) {
   const raw = String(value || '').trim()
@@ -102,8 +102,8 @@ export default function RecordGoods({ onDone }) {
         type: goodsType,
         recorded_by: profile?.id,
         ...(goodsType === 'sea'
-          ? { description: sea.description, length_cm: parseFloat(sea.length_cm), width_cm: parseFloat(sea.width_cm), height_cm: parseFloat(sea.height_cm), weight_kg: parseFloat(sea.weight_kg), tracking_no: sea.tracking_no || null, notes: sea.notes, status: sea.status }
-          : { description: air.description, weight_kg: parseFloat(air.weight_kg), tracking_no: air.tracking_no || null, notes: air.notes, status: air.status }
+          ? { description: sea.description, length_cm: parseFloat(sea.length_cm), width_cm: parseFloat(sea.width_cm), height_cm: parseFloat(sea.height_cm), quantity: parseInt(sea.quantity, 10) || 1, weight_kg: parseFloat(sea.weight_kg), tracking_no: sea.tracking_no || null, notes: sea.notes, status: sea.status }
+          : { description: air.description, quantity: parseInt(air.quantity, 10) || 1, weight_kg: parseFloat(air.weight_kg), tracking_no: air.tracking_no || null, notes: air.notes, status: air.status }
         )
       }
       const { data: newGoods, error } = await supabase.from('goods').insert(payload).select().single()
@@ -134,7 +134,7 @@ export default function RecordGoods({ onDone }) {
         onResult={val => { goodsType === 'sea' ? setSea(p => ({...p, tracking_no: val})) : setAir(p => ({...p, tracking_no: val})) }}
         title="Scan Package Barcode (快递号)" />
       <Modal open={showLabel} title="Client Shipping Label" onClose={() => setShowLabel(false)}>
-        <ShippingLabel client={client} settings={settings} />
+        <ShippingLabel client={client} settings={settings} shipmentType={goodsType} />
       </Modal>
 
       {/* Step 1 — Find Client */}
@@ -223,6 +223,12 @@ export default function RecordGoods({ onDone }) {
               <input className="input-field" placeholder="e.g. Electronic components, clothing, furniture…"
                 value={goodsType === 'sea' ? sea.description : air.description}
                 onChange={e => goodsType === 'sea' ? setSea(p=>({...p, description: e.target.value})) : setAir(p=>({...p, description: e.target.value}))} />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Number of Packages</label>
+              <input className="input-field" type="number" min="1" step="1" value={goodsType === 'sea' ? sea.quantity : air.quantity}
+                onChange={e => goodsType === 'sea' ? setSea(p => ({ ...p, quantity: e.target.value })) : setAir(p => ({ ...p, quantity: e.target.value }))} />
             </div>
 
             {goodsType === 'sea' ? (

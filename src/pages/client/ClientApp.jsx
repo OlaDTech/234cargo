@@ -95,7 +95,7 @@ export default function ClientApp() {
         }
       />
 
-      <div className="page">
+      <div className={`page ${tab === 'chat' ? 'page-chat' : ''}`}>
 
         {/* HOME */}
         {tab === 'home' && (
@@ -267,6 +267,7 @@ export default function ClientApp() {
               {[
                 selectedGoods.type === 'sea' && selectedGoods.cbm ? ['CBM', selectedGoods.cbm + ' m³'] : null,
                 selectedGoods.type === 'sea' && selectedGoods.length_cm ? ['Dimensions', `${selectedGoods.length_cm}×${selectedGoods.width_cm}×${selectedGoods.height_cm} cm`] : null,
+                ['Packages', (selectedGoods.quantity || 1) + ' package(s)'],
                 ['Weight', selectedGoods.weight_kg + ' kg'],
                 ['Received', fmtDate(selectedGoods.created_at)],
                 ['Updated', fmtDate(selectedGoods.updated_at)],
@@ -293,8 +294,8 @@ export default function ClientApp() {
 
       {/* Receipt modal */}
       <Modal open={!!selectedReceipt} title="Receipt" onClose={() => setSelectedReceipt(null)}>
-        <ReceiptView receipt={selectedReceipt} client={clientUser} />
-        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 12 }}>Print Receipt</button>
+        <ReceiptView receipt={selectedReceipt} client={clientUser} companyName={settings.company_name || '234 Cargo'} />
+        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 12 }}>Download / Print A4 Receipt</button>
       </Modal>
 
       {/* Shipping label modal */}

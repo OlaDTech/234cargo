@@ -254,7 +254,7 @@ export function PhotoGallery({ photos = [], compact = false }) {
   )
 }
 
-export function ShippingLabel({ client, settings = {} }) {
+export function ShippingLabel({ client, settings = {}, shipmentType }) {
   if (!client) return null
   const payload = client.shipping_mark || ''
   return (
@@ -286,6 +286,7 @@ export function ShippingLabel({ client, settings = {} }) {
             <div style={{ fontSize: 8.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 700 }}>{payload}</div>
           </div>
         </div>
+        {shipmentType && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><TypePill type={shipmentType} /></div>}
         <div className="shipping-label-mark">
           <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>Shipping Mark</div>
           <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 4, color: '#fff', fontFamily: 'Space Grotesk,sans-serif', marginTop: 3 }}>{client.shipping_mark}</div>
@@ -301,50 +302,48 @@ export function ShippingLabel({ client, settings = {} }) {
   )
 }
 
-export function ReceiptView({ receipt, client }) {
+export function ReceiptView({ receipt, client, companyName = '234 Cargo' }) {
   if (!receipt) return null
   const items = typeof receipt.items === 'string' ? JSON.parse(receipt.items) : (receipt.items || [])
   const currency = receipt.currency || 'NGN'
   return (
-    <div style={{ background: 'var(--white)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'flex-start' }}>
+    <div className="receipt-document">
+      <header className="receipt-header">
         <div>
-          <div style={{ fontFamily: 'Space Grotesk,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--navy)' }}>RECEIPT</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{receipt.receipt_no}</div>
+          <div className="receipt-company">{companyName}</div>
+          <div className="receipt-company-note">Freight forwarding and logistics</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <span className={`pill ${receipt.status === 'paid' ? 'pill-delivered' : 'pill-transit'}`}>
-            {receipt.status === 'paid' ? '✅ Paid' : '⏳ Unpaid'}
-          </span>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-            {receipt.issued_at && format(new Date(receipt.issued_at), 'dd MMM yyyy')}
-          </div>
+        <div className="receipt-title-block">
+          <div className="receipt-title">RECEIPT</div>
+          <div className="receipt-number">{receipt.receipt_no}</div>
+        </div>
+      </header>
+      <div className="receipt-rule" />
+      <div className="receipt-details-grid">
+        <div className="receipt-bill-to">
+          <div className="receipt-kicker">BILL TO</div>
+          <div className="receipt-client-name">{client?.full_name || receipt.client?.full_name}</div>
+          <div>{client?.phone || receipt.client?.phone || 'Phone not supplied'}</div>
+          <div className="receipt-mark">{client?.shipping_mark || receipt.client?.shipping_mark}</div>
+        </div>
+        <div className="receipt-meta">
+          <div><span>Issued</span><strong>{receipt.issued_at && format(new Date(receipt.issued_at), 'dd MMM yyyy')}</strong></div>
+          <div><span>Status</span><strong className={receipt.status === 'paid' ? 'receipt-paid' : 'receipt-unpaid'}>{receipt.status === 'paid' ? 'Paid' : 'Unpaid'}</strong></div>
         </div>
       </div>
-      <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Bill To</div>
-        <div style={{ fontWeight: 600 }}>{client?.full_name || receipt.client?.full_name}</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)' }}>{client?.phone || receipt.client?.phone}</div>
-        <div style={{ fontSize: 13, color: 'var(--teal-dark)', fontWeight: 600 }}>{client?.shipping_mark || receipt.client?.shipping_mark}</div>
+      <table className="receipt-items-table">
+        <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+        <tbody>{items.map((item, i) => (
+          <tr key={i}>
+            <td>{item.desc}</td><td>{item.qty || 1}</td><td>{formatMoney(item.unit_price, currency)}</td><td>{formatMoney((item.qty || 1) * item.unit_price, currency)}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      <div className="receipt-summary">
+        {receipt.discount > 0 && <div><span>Discount</span><strong>- {formatMoney(receipt.discount, currency)}</strong></div>}
+        <div className="receipt-total"><span>Total Due</span><strong>{formatMoney(receipt.total, currency)}</strong></div>
       </div>
-      {items.map((item, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
-          <div>
-            <div style={{ fontWeight: 500 }}>{item.desc}</div>
-            {item.qty !== 1 && <div style={{ fontSize: 13, color: 'var(--muted)' }}>{item.qty} × {formatMoney(item.unit_price, currency)}</div>}
-          </div>
-          <div style={{ fontWeight: 600 }}>{formatMoney(item.qty * item.unit_price, currency)}</div>
-        </div>
-      ))}
-      {receipt.discount > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--success)', margin: '8px 0' }}>
-          <span>Discount</span><span>− {formatMoney(receipt.discount, currency)}</span>
-        </div>
-      )}
-      <div className="receipt-total">
-        <span style={{ fontWeight: 700, fontSize: 17 }}>Total</span>
-        <span style={{ fontWeight: 800, fontSize: 22, color: 'var(--teal-dark)' }}>{formatMoney(receipt.total, currency)}</span>
-      </div>
+      <footer className="receipt-footer">Thank you for choosing {companyName}. Keep this receipt for your records.</footer>
     </div>
   )
 }

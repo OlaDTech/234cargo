@@ -101,6 +101,7 @@ create table if not exists goods (
     else null end
   ) stored,
   -- common
+  quantity integer not null default 1 check (quantity > 0),
   weight_kg numeric not null default 0,
   tracking_no text,
   status text not null check (status in ('in_warehouse','in_transit','delivered')) default 'in_warehouse',
@@ -111,6 +112,10 @@ create table if not exists goods (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table goods add column if not exists quantity integer not null default 1;
+alter table goods drop constraint if exists goods_quantity_positive;
+alter table goods add constraint goods_quantity_positive check (quantity > 0);
 
 -- ── CONTAINERS ────────────────────────────────────────────
 create table if not exists containers (

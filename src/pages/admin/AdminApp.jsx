@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil } from 'lucide-react'
+import { LayoutDashboard, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, ReceiptText, Wallet, Pencil, Search, Download, Trash2, Barcode } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -41,6 +41,11 @@ export default function AdminApp() {
   const [receiptForm, setReceiptForm] = useState({ discount: 0 })
   const [settingsForm, setSettingsForm] = useState({})
   const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
+  const [goodsQuery, setGoodsQuery] = useState('')
+  const [goodsTypeFilter, setGoodsTypeFilter] = useState('all')
+  const [goodsStatusFilter, setGoodsStatusFilter] = useState('all')
+  const [goodsSort, setGoodsSort] = useState('newest')
+  const [trackingQuery, setTrackingQuery] = useState('')
   const reloadTimer = useRef(null)
 
   useEffect(() => {
@@ -166,7 +171,7 @@ export default function AdminApp() {
 
   const saveExpense = async () => {
     if (!expenseForm.title.trim() || !expenseForm.amount) { toast.error('Enter expense title and amount'); return }
-    const payload = { ...expenseForm, amount: parseFloat(expenseForm.amount), recorded_by: profile?.id }
+    const payload = { ...expenseForm, amount: parseFloat(expenseForm.amount), currency: 'NGN', recorded_by: profile?.id }
     const query = showExpenseForm?.id
       ? supabase.from('expenses').update(payload).eq('id', showExpenseForm.id)
       : supabase.from('expenses').insert(payload)
@@ -185,6 +190,7 @@ export default function AdminApp() {
       length_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.length_cm) || null : null,
       width_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.width_cm) || null : null,
       height_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.height_cm) || null : null,
+      quantity: parseInt(showEditGoods.quantity, 10) || 1,
       weight_kg: parseFloat(showEditGoods.weight_kg) || 0,
       tracking_no: showEditGoods.tracking_no || null,
       status: showEditGoods.status,
@@ -198,9 +204,29 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const removeRecord = async (table, id, label) => {
+    if (!window.confirm(`Delete this ${label}? This cannot be undone.`)) return
+    const { error } = await supabase.from(table).delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    toast.success(`${label} deleted`)
+    loadAll()
+  }
+
+  const exportCsv = (filename, rows) => {
+    if (!rows.length) { toast.error('There is no data to export'); return }
+    const columns = Object.keys(rows[0])
+    const escape = value => `"${String(value ?? '').replaceAll('"', '""')}"`
+    const csv = [columns.join(','), ...rows.map(row => columns.map(column => escape(row[column])).join(','))].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+    const link = document.createElement('a')
+    link.href = url; link.download = `${filename}.csv`; link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const tabs = [
     { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
     { id: 'goods', label: 'Goods', Icon: Package },
+    { id: 'tracking', label: 'Track', Icon: Barcode },
     { id: 'containers', label: 'Containers', Icon: Ship },
     { id: 'messages', label: 'Messages', Icon: MessageCircle },
     { id: 'finance', label: 'Finance', Icon: Wallet },
@@ -214,9 +240,26 @@ export default function AdminApp() {
     lastMsg: messages.filter(m => m.client_id === c.id).slice(-1)[0],
   })).filter(c => c.msgs.length > 0).sort((a,b) => new Date(b.lastMsg?.created_at) - new Date(a.lastMsg?.created_at))
 
+  const filteredGoods = goods.filter(g => {
+    const term = goodsQuery.trim().toLowerCase()
+    const matchesTerm = !term || [g.description, g.tracking_no, g.client?.full_name, g.client?.shipping_mark].some(value => String(value || '').toLowerCase().includes(term))
+    return matchesTerm && (goodsTypeFilter === 'all' || g.type === goodsTypeFilter) && (goodsStatusFilter === 'all' || g.status === goodsStatusFilter)
+  }).sort((a, b) => {
+    if (goodsSort === 'cbm') return (parseFloat(b.cbm) || 0) - (parseFloat(a.cbm) || 0)
+    if (goodsSort === 'weight') return (parseFloat(b.weight_kg) || 0) - (parseFloat(a.weight_kg) || 0)
+    if (goodsSort === 'quantity') return (parseInt(b.quantity, 10) || 1) - (parseInt(a.quantity, 10) || 1)
+    if (goodsSort === 'oldest') return new Date(a.created_at) - new Date(b.created_at)
+    return new Date(b.created_at) - new Date(a.created_at)
+  })
+
+  const trackedGoods = goods.filter(g => g.tracking_no).filter(g => {
+    const term = trackingQuery.trim().toLowerCase()
+    return !term || [g.tracking_no, g.description, g.client?.full_name, g.client?.shipping_mark].some(value => String(value || '').toLowerCase().includes(term))
+  })
+
   return (
     <div className="app-shell">
-      <TopNav role="Admin" title={tab === 'dashboard' ? 'Admin Overview' : tab === 'goods' ? 'Goods Management' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'System Settings'}
+      <TopNav role="Admin" title={tab === 'dashboard' ? 'Admin Overview' : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'System Settings'}
         right={
           <button onClick={signOut} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12 }}>
             <LogOut size={14} style={{ display: 'inline', marginRight: 4 }} />Logout
@@ -262,7 +305,7 @@ export default function AdminApp() {
                 <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{s.full_name} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>· {s.role}</span></div>
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>{s.phone}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {['dashboard','clients','goods','scan'].map(perm => {
+                  {['dashboard','clients','goods','scan','finance','messages'].map(perm => {
                     const has = (s.permissions || []).includes(perm)
                     return (
                       <button key={perm} onClick={() => togglePermission(s.id, perm, s.permissions || [])} style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: has ? 'var(--teal)' : 'var(--surface)', color: has ? 'var(--navy)' : 'var(--muted)', fontWeight: has ? 700 : 400, fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}>
@@ -305,8 +348,16 @@ export default function AdminApp() {
         {/* GOODS MANAGEMENT */}
         {tab === 'goods' && (
           <>
-            <SectionHeader title={`All Goods (${goods.length})`} />
-            {loading ? <SkeletonList /> : goods.map(g => {
+            <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, recorded_at: g.created_at })))}><Download size={14} />Export</button>} />
+            <div className="card" style={{ padding: 12 }}>
+              <div className="input-scan-row" style={{ marginBottom: 10 }}><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search client, shipping mark, goods or tracking number" value={goodsQuery} onChange={e => setGoodsQuery(e.target.value)} /></div>
+              <div className="filter-row">
+                <select className="input-field" value={goodsTypeFilter} onChange={e => setGoodsTypeFilter(e.target.value)}><option value="all">All shipment types</option><option value="sea">Sea</option><option value="air">Air</option></select>
+                <select className="input-field" value={goodsStatusFilter} onChange={e => setGoodsStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="in_warehouse">In warehouse</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option></select>
+                <select className="input-field" value={goodsSort} onChange={e => setGoodsSort(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="cbm">Highest CBM</option><option value="weight">Heaviest first</option><option value="quantity">Most packages</option></select>
+              </div>
+            </div>
+            {loading ? <SkeletonList /> : filteredGoods.map(g => {
               const hasReceipt = receipts.find(r => r.goods_id === g.id)
               return (
                 <div key={g.id} className="card">
@@ -346,6 +397,7 @@ export default function AdminApp() {
                   {/* Receipt */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => setShowEditGoods(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
+                    <button onClick={() => removeRecord('goods', g.id, 'goods record')} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
                     {!hasReceipt ? (
                       <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
                     ) : (
@@ -355,6 +407,19 @@ export default function AdminApp() {
                 </div>
               )
             })}
+          </>
+        )}
+
+        {tab === 'tracking' && (
+          <>
+            <SectionHeader title="Tracking Number Register" action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-tracking-register', trackedGoods.map(g => ({ tracking_no: g.tracking_no, description: g.description, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, received_at: g.created_at })))}><Download size={14} />Export</button>} />
+            <div className="card" style={{ padding: 12 }}><div className="input-scan-row"><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search tracking number, client, mark or goods" value={trackingQuery} onChange={e => setTrackingQuery(e.target.value)} /></div></div>
+            {trackedGoods.length === 0 ? <EmptyState icon="box" title="No matching tracking numbers" text="Tracking numbers recorded by staff will appear here." /> : trackedGoods.map(g => (
+              <div key={g.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><div><div style={{ color: 'var(--teal-d)', fontWeight: 800, fontSize: 16 }}>{g.tracking_no}</div><div style={{ fontWeight: 700, marginTop: 4 }}>{g.description}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{g.client?.full_name} · {g.client?.shipping_mark}</div></div><div style={{ textAlign: 'right' }}><TypePill type={g.type} /><div style={{ marginTop: 7 }}><StatusPill status={g.status} /></div></div></div>
+                <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 10 }}>{g.type === 'sea' ? `${g.cbm || 0} CBM · ` : ''}{g.weight_kg || 0} kg · Recorded {fmtDate(g.created_at)}</div>
+              </div>
+            ))}
           </>
         )}
 
@@ -385,7 +450,7 @@ export default function AdminApp() {
 
             {/* Parking list */}
             <div style={{ marginTop: 24 }}>
-              <SectionHeader title="Parking List" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>Unassigned goods</span>} />
+              <SectionHeader title="Parking List" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-parking-list', goods.filter(g => !g.container_id).map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, cbm: g.cbm, weight_kg: g.weight_kg, status: g.status })))}><Download size={13} />Export</button>} />
               {goods.filter(g => !g.container_id).map(g => (
                 <div key={g.id} className="card card-sm">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -458,7 +523,7 @@ export default function AdminApp() {
               ))}
             </div>
 
-            <SectionHeader title="Expenses" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{expenses.length} records</span>} />
+            <SectionHeader title="Expenses" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-expenses', expenses.map(exp => ({ date: exp.expense_date, title: exp.title, category: exp.category, amount_ngn: exp.amount, notes: exp.notes })))}><Download size={13} />Export</button>} />
             <div className="card" style={{ padding: 8, overflowX: 'auto' }}>
               {expenses.length === 0 ? <EmptyState icon="box" title="No expenses yet" text="Add rent, freight, handling, staff, or operating costs here." /> : (
                 <table className="finance-table">
@@ -472,7 +537,7 @@ export default function AdminApp() {
                         <td><div style={{ fontWeight: 600 }}>{exp.title}</div>{exp.notes && <div style={{ color: 'var(--muted)', fontSize: 12 }}>{exp.notes}</div>}</td>
                         <td>{exp.category}</td>
                         <td className="amount-expense">{formatMoney(exp.amount, exp.currency || 'NGN')}</td>
-                        <td><button className="btn btn-xs btn-secondary" onClick={() => openExpenseForm(exp)}><Pencil size={12} />Edit</button></td>
+                        <td style={{ display: 'flex', gap: 6 }}><button className="btn btn-xs btn-secondary" onClick={() => openExpenseForm(exp)}><Pencil size={12} />Edit</button><button className="btn btn-xs btn-danger" onClick={() => removeRecord('expenses', exp.id, 'expense')}><Trash2 size={12} /></button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -480,7 +545,7 @@ export default function AdminApp() {
               )}
             </div>
 
-            <SectionHeader title="Receipt Income" />
+            <SectionHeader title="Payment List" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-payments', receipts.map(r => ({ date: r.issued_at, receipt_no: r.receipt_no, client: r.client?.full_name, status: r.status, total_ngn: r.total, paid_at: r.paid_at })))}><Download size={13} />Export</button>} />
             <div className="card" style={{ padding: 8, overflowX: 'auto' }}>
               <table className="finance-table">
                 <thead>
@@ -617,6 +682,10 @@ export default function AdminApp() {
               </div>
             )}
             <div className="input-group">
+              <label className="input-label">Number of Packages</label>
+              <input className="input-field" type="number" min="1" value={showEditGoods.quantity || 1} onChange={e => setShowEditGoods(p => ({ ...p, quantity: e.target.value }))} />
+            </div>
+            <div className="input-group">
               <label className="input-label">Weight kg</label>
               <input className="input-field" type="number" step="0.1" value={showEditGoods.weight_kg || ''} onChange={e => setShowEditGoods(p => ({ ...p, weight_kg: e.target.value }))} />
             </div>
@@ -697,7 +766,8 @@ export default function AdminApp() {
 
       {/* Receipt view */}
       <Modal open={!!showReceiptView} title="Receipt" onClose={() => setShowReceiptView(null)}>
-        <ReceiptView receipt={showReceiptView} client={clients.find(c=>c.id===showReceiptView?.client_id)} />
+        <ReceiptView receipt={showReceiptView} client={clients.find(c=>c.id===showReceiptView?.client_id)} companyName={settings.company_name || '234 Cargo'} />
+        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 12 }}>Download / Print A4 Receipt</button>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           {showReceiptView?.status === 'unpaid' && (
             <button className="btn btn-primary btn-full" onClick={async () => {
