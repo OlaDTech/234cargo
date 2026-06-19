@@ -256,7 +256,7 @@ export function PhotoGallery({ photos = [], compact = false }) {
 
 export function ShippingLabel({ client, settings = {} }) {
   if (!client) return null
-  const payload = `OA:${client.shipping_mark}:${client.id || ''}`
+  const payload = client.shipping_mark || ''
   return (
     <div className="shipping-label">
       {/* Brand header bar */}
@@ -283,6 +283,7 @@ export function ShippingLabel({ client, settings = {} }) {
               <QRCode value={payload} size={84} fg="#0A1628" />
             </div>
             <div style={{ fontSize: 8.5, color: 'var(--t3)', marginTop: 4, letterSpacing: 0.4 }}>SCAN TO TRACK</div>
+            <div style={{ fontSize: 8.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 700 }}>{payload}</div>
           </div>
         </div>
         <div className="shipping-label-mark">

@@ -7,6 +7,18 @@ import toast from 'react-hot-toast'
 const EMPTY_SEA = { description: '', length_cm: '', width_cm: '', height_cm: '', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
 const EMPTY_AIR = { description: '', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
 
+function normalizeClientScan(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('OA:')) return raw.split(':')[1]?.trim() || raw
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed.shipping_mark || parsed.shippingMark || parsed.phone || raw
+  } catch {
+    return raw
+  }
+}
+
 export default function RecordGoods({ onDone }) {
   const { profile } = useAuth()
   const [step, setStep] = useState('find') // 'find' | 'form'
@@ -46,10 +58,11 @@ export default function RecordGoods({ onDone }) {
   }, [clientQuery, client])
 
   const handleScanResult = async (val) => {
-    setClientQuery(val)
+    const scanned = normalizeClientScan(val)
+    setClientQuery(scanned)
     // Try exact match first
     const { data } = await supabase.from('clients').select('*')
-      .or(`phone.eq.${val},shipping_mark.eq.${val}`)
+      .or(`phone.eq.${scanned},shipping_mark.eq.${scanned}`)
       .single()
     if (data) { setClient(data); setClientQuery(data.full_name); setStep('form') }
     else toast('No exact match — select from suggestions below')
