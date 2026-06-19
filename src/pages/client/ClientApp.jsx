@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2 } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
@@ -70,10 +70,11 @@ export default function ClientApp() {
   const tabs = [
     { id: 'home', label: 'Home', Icon: Home },
     { id: 'goods', label: 'My Goods', Icon: Package },
-    { id: 'label', label: 'Label', Icon: Tag },
-    { id: 'suppliers', label: 'Suppliers', Icon: ShoppingBag },
+    { id: 'receipts', label: 'Receipts', Icon: ReceiptText },
     { id: 'chat', label: 'Messages', Icon: MessageCircle },
+    { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
+  const activeNav = ['label', 'suppliers'].includes(tab) ? 'more' : tab
 
   const inWarehouse = goods.filter(g => g.status === 'in_warehouse').length
   const inTransit = goods.filter(g => g.status === 'in_transit').length
@@ -186,6 +187,31 @@ export default function ClientApp() {
           </>
         )}
 
+        {tab === 'receipts' && (
+          <>
+            <SectionHeader title={`My Receipts (${receipts.length})`} />
+            {receipts.length === 0 ? <EmptyState icon="receipt" title="No receipts yet" text="Your freight receipts will appear here after they are issued." /> : receipts.map(receipt => (
+              <button key={receipt.id} className="more-menu-item" onClick={() => setSelectedReceipt(receipt)}>
+                <span className="more-menu-icon"><ReceiptText size={21} /></span><span><strong>{receipt.receipt_no}</strong><small>{fmtDate(receipt.issued_at)} · {receipt.status === 'paid' ? 'Paid' : 'Unpaid'}</small></span><strong style={{ color: 'var(--teal-d)', fontSize: 14 }}>View</strong>
+              </button>
+            ))}
+          </>
+        )}
+
+        {tab === 'more' && (
+          <>
+            <SectionHeader title="More" />
+            {[
+              { id: 'label', title: 'Shipping Label', text: 'View, print or share your shipping mark label.', Icon: Tag },
+              { id: 'suppliers', title: 'Supplier Directory', text: 'Browse the approved supplier directory.', Icon: ShoppingBag },
+            ].map(item => (
+              <button key={item.id} className="more-menu-item" onClick={() => setTab(item.id)}>
+                <span className="more-menu-icon"><item.Icon size={21} /></span><span><strong>{item.title}</strong><small>{item.text}</small></span><span className="more-menu-arrow">›</span>
+              </button>
+            ))}
+          </>
+        )}
+
         {/* LABEL */}
         {tab === 'label' && (
           <>
@@ -252,7 +278,7 @@ export default function ClientApp() {
 
       </div>
 
-      <BottomNav tabs={tabs} active={tab} onChange={setTab} />
+      <BottomNav tabs={tabs} active={activeNav} onChange={setTab} />
 
       {/* Goods detail modal */}
       <Modal open={!!selectedGoods} title="Shipment Details" onClose={() => setSelectedGoods(null)}>

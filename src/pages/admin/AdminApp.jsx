@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, MoreHorizontal } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -227,11 +227,10 @@ export default function AdminApp() {
     { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
     { id: 'goods', label: 'Goods', Icon: Package },
     { id: 'tracking', label: 'Track', Icon: Barcode },
-    { id: 'containers', label: 'Containers', Icon: Ship },
-    { id: 'messages', label: 'Messages', Icon: MessageCircle },
     { id: 'finance', label: 'Finance', Icon: Wallet },
-    { id: 'settings', label: 'Settings', Icon: Settings },
+    { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
+  const activeNav = ['containers', 'messages', 'settings'].includes(tab) ? 'more' : tab
 
   // Group messages by client
   const clientThreads = clients.map(c => ({
@@ -419,6 +418,21 @@ export default function AdminApp() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><div><div style={{ color: 'var(--teal-d)', fontWeight: 800, fontSize: 16 }}>{g.tracking_no}</div><div style={{ fontWeight: 700, marginTop: 4 }}>{g.description}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{g.client?.full_name} · {g.client?.shipping_mark}</div></div><div style={{ textAlign: 'right' }}><TypePill type={g.type} /><div style={{ marginTop: 7 }}><StatusPill status={g.status} /></div></div></div>
                 <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 10 }}>{g.type === 'sea' ? `${g.cbm || 0} CBM · ` : ''}{g.weight_kg || 0} kg · Recorded {fmtDate(g.created_at)}</div>
               </div>
+            ))}
+          </>
+        )}
+
+        {tab === 'more' && (
+          <>
+            <SectionHeader title="More Tools" />
+            {[
+              { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
+              { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
+              { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
+            ].map(item => (
+              <button key={item.id} className="more-menu-item" onClick={() => setTab(item.id)}>
+                <span className="more-menu-icon"><item.Icon size={21} /></span><span><strong>{item.title}</strong><small>{item.text}</small></span><span className="more-menu-arrow">›</span>
+              </button>
             ))}
           </>
         )}
@@ -619,7 +633,7 @@ export default function AdminApp() {
 
       </div>
 
-      <BottomNav tabs={tabs} active={tab} onChange={setTab} />
+      <BottomNav tabs={tabs} active={activeNav} onChange={setTab} />
 
       {/* Container detail */}
       <Modal open={!!showContainerDetail} title="Container Details" onClose={() => setShowContainerDetail(null)}>

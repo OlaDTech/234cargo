@@ -255,6 +255,12 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .input-scan-row .input-group { flex: 1; margin-bottom: 0; }
 .filter-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .filter-row .input-field { min-width: 0; padding: 9px 7px; font-size: 12px; }
+.more-menu-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 16px 4px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--t1); cursor: pointer; font-family: inherit; }
+.more-menu-item:last-child { border-bottom: 0; }
+.more-menu-icon { width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--teal-l); color: var(--teal-d); }
+.more-menu-item strong, .more-menu-item small { display: block; }
+.more-menu-item strong { font-size: 15px; }.more-menu-item small { margin-top: 3px; color: var(--t3); font-size: 12px; line-height: 1.4; }
+.more-menu-arrow { color: var(--t3); font-size: 28px; font-weight: 300; }
 
 @media print {
   @page { size: A4; margin: 16mm; }
