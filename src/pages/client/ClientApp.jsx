@@ -83,7 +83,7 @@ export default function ClientApp() {
 
   return (
     <div className="app-shell">
-      <TopNav role="Client Portal" title="OceanAir Logistics"
+      <TopNav role="Client Portal" title={settings.company_name || '234 Cargo Logistics'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--teal)', color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>

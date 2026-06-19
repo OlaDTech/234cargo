@@ -6,26 +6,32 @@ import { Icons } from '../components/Icons'
 
 export default function LoginPage() {
   const { signInStaff, signInClient } = useAuth()
+  const [view, setView] = useState('home')
   const [mode, setMode] = useState('client')
+  const [loginRole, setLoginRole] = useState('client')
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const openLogin = (role) => {
+    setLoginRole(role)
+    setMode(role === 'client' ? 'client' : 'staff')
+    setError('')
+    setView('login')
+  }
+
   const handleClientLogin = async () => {
     if (!identifier.trim() || !password.trim()) { setError('Please fill in all fields'); return }
     setLoading(true); setError('')
     try {
-      const { data, error: qErr } = await supabase
-        .from('clients')
-        .select('*')
-        .or(`phone.eq.${identifier.trim()},shipping_mark.eq.${identifier.trim()}`)
-        .single()
+      const { data, error: qErr } = await supabase.from('clients').select('*')
+        .or(`phone.eq.${identifier.trim()},shipping_mark.eq.${identifier.trim()}`).single()
       if (qErr || !data) throw new Error('Client not found. Check your phone number or shipping mark.')
       if (data.password_hash !== password.trim()) throw new Error('Incorrect password.')
       signInClient(data)
-      toast.success('Welcome back, ' + data.full_name.split(' ')[0] + '!')
+      toast.success(`Welcome back, ${data.full_name.split(' ')[0]}!`)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
@@ -35,75 +41,62 @@ export default function LoginPage() {
     setLoading(true); setError('')
     try {
       const profile = await signInStaff(email.trim(), password.trim())
-      toast.success('Welcome, ' + (profile?.full_name || 'User') + '!')
-    } catch (e) {
-      setError(e.message || 'Invalid email or password.')
-    }
+      if (loginRole === 'admin' && profile?.role !== 'admin') {
+        await supabase.auth.signOut()
+        throw new Error('This account is not an administrator account.')
+      }
+      if (loginRole === 'staff' && profile?.role !== 'staff') {
+        await supabase.auth.signOut()
+        throw new Error('Please use the administrator login for this account.')
+      }
+      toast.success(`Welcome, ${profile?.full_name || 'User'}!`)
+    } catch (e) { setError(e.message || 'Invalid email or password.') }
     finally { setLoading(false) }
   }
 
-  const onKey = (e, fn) => { if (e.key === 'Enter') fn() }
+  const onKey = (event, fn) => { if (event.key === 'Enter') fn() }
 
-  const inputStyle = { width: '100%', padding: '13px 14px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--white)', fontSize: 15, color: 'var(--text)', fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box', marginTop: 5, transition: 'border-color 0.15s' }
-  const labelStyle = { fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }
+  if (view === 'home') {
+    return (
+      <main className="public-site">
+        <nav className="public-nav">
+          <button className="public-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><span>234</span> Cargo</button>
+          <div className="public-nav-actions"><button onClick={() => openLogin('client')} className="public-link">Client Login</button><button onClick={() => openLogin('staff')} className="public-link">Staff</button><button onClick={() => openLogin('admin')} className="public-link">Admin</button></div>
+        </nav>
 
+        <section className="public-hero">
+          <div className="public-hero-copy"><div className="public-eyebrow">Nigeria to China freight forwarding</div><h1>234 Cargo</h1><p>Clear shipment tracking and dependable sea and air freight for businesses and shoppers across Nigeria.</p><div className="public-hero-actions"><button className="btn btn-primary" onClick={() => openLogin('client')}>Track My Shipment</button><a className="btn btn-secondary" href="#services">Our Services</a></div></div>
+          <div className="public-hero-image" role="img" aria-label="Cargo containers ready for shipment" />
+        </section>
+
+        <section id="services" className="public-section"><div className="public-section-heading"><div className="public-eyebrow">How we help</div><h2>Freight built for your business</h2></div><div className="service-grid">
+          <article><span className="service-icon"><Icons.ship size={25} /></span><h3>Sea Freight</h3><p>Cost-effective consolidated cargo for larger shipments and regular restocking.</p></article>
+          <article><span className="service-icon"><Icons.plane size={25} /></span><h3>Air Freight</h3><p>Faster delivery for urgent stock, samples and lightweight parcels.</p></article>
+          <article><span className="service-icon"><Icons.box size={25} /></span><h3>Package Tracking</h3><p>See warehouse, transit and delivery updates from one client portal.</p></article>
+        </div></section>
+
+        <section className="public-section public-process"><div><div className="public-eyebrow">Simple process</div><h2>From supplier to your doorstep</h2></div><ol><li><strong>Send your shipping mark</strong><span>Give your unique 234 Cargo mark to your supplier.</span></li><li><strong>We record your goods</strong><span>Our warehouse team logs each package, photo and tracking number.</span></li><li><strong>Follow every update</strong><span>Sign in anytime to check your shipment and receipts.</span></li></ol></section>
+
+        <section className="public-cta"><div><h2>Already shipping with us?</h2><p>Sign in to view your goods, receipts and messages.</p></div><button className="btn btn-primary" onClick={() => openLogin('client')}>Client Login</button></section>
+        <footer className="public-footer"><span>234 Cargo Logistics</span><span>Sea and air freight forwarding</span></footer>
+      </main>
+    )
+  }
+
+  const heading = mode === 'client' ? 'Client portal' : loginRole === 'admin' ? 'Administrator login' : 'Staff login'
   return (
     <div className="login-bg">
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div className="login-logo">OA</div>
-        <div style={{ fontFamily: 'Space Grotesk, sans-serif', color: 'var(--white)', fontSize: 24, fontWeight: 800 }}>OceanAir Logistics</div>
-        <div style={{ color: 'var(--teal)', fontSize: 13, marginTop: 4 }}>Sea & Air Freight Forwarding</div>
-      </div>
-
-      <div className="login-card">
-        <div className="tab-row" style={{ marginBottom: 22 }}>
-          <button className={'tab-btn ' + (mode === 'client' ? 'active' : '')} onClick={() => { setMode('client'); setError('') }}><span style={{display:'inline-flex',alignItems:'center',gap:6,justifyContent:'center'}}><Icons.box size={15} />Client</span></button>
-          <button className={'tab-btn ' + (mode === 'staff' ? 'active' : '')} onClick={() => { setMode('staff'); setError('') }}><span style={{display:'inline-flex',alignItems:'center',gap:6,justifyContent:'center'}}><Icons.warehouse size={15} />Staff / Admin</span></button>
+      <div className="login-shell">
+        <button className="login-back" onClick={() => { setView('home'); setError('') }}>Back to homepage</button>
+        <div className="login-intro"><div className="login-logo">234</div><div><div className="login-company">234 Cargo</div><div className="login-subtitle">{heading}</div></div></div>
+        <div className="login-card">
+          <div className="login-heading">Welcome back</div><div className="login-copy">{mode === 'client' ? 'Sign in with your phone number or shipping mark.' : 'Sign in with your assigned work email.'}</div>
+          {mode === 'client' ? <><label className="input-label">Phone Number or Shipping Mark</label><input className="input-field" placeholder="e.g. 080... or NG-001-ABC" value={identifier} onChange={e => setIdentifier(e.target.value)} onKeyDown={e => onKey(e, handleClientLogin)} autoFocus /><label className="input-label" style={{ marginTop: 14 }}>Password</label><input className="input-field" type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => onKey(e, handleClientLogin)} /></> : <><label className="input-label">Work Email Address</label><input className="input-field" type="email" placeholder="you@234cargo.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => onKey(e, handleStaffLogin)} autoFocus /><label className="input-label" style={{ marginTop: 14 }}>Password</label><input className="input-field" type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => onKey(e, handleStaffLogin)} /></>}
+          {error && <div className="banner banner-error" style={{ marginTop: 14 }}>{error}</div>}
+          <button className="btn btn-primary btn-full" style={{ marginTop: 18 }} onClick={mode === 'client' ? handleClientLogin : handleStaffLogin} disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
+          <div className="login-help">{mode === 'client' ? 'Contact 234 Cargo if you need help accessing your portal.' : 'Your administrator creates staff and admin accounts.'}</div>
         </div>
-
-        <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Welcome back</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 22 }}>
-          {mode === 'client' ? 'Sign in with your phone number or shipping mark' : 'Sign in with your staff account email'}
-        </div>
-
-        {mode === 'client' ? (
-          <>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Phone Number or Shipping Mark</label>
-              <input style={inputStyle} placeholder="e.g. 60199887766 or MY-001-LWM" value={identifier}
-                onChange={e => setIdentifier(e.target.value)} onKeyDown={e => onKey(e, handleClientLogin)} autoFocus />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Password</label>
-              <input style={inputStyle} type="password" placeholder="Enter your password" value={password}
-                onChange={e => setPassword(e.target.value)} onKeyDown={e => onKey(e, handleClientLogin)} />
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Email Address</label>
-              <input style={inputStyle} type="email" placeholder="you@company.com" value={email}
-                onChange={e => setEmail(e.target.value)} onKeyDown={e => onKey(e, handleStaffLogin)} autoFocus />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Password</label>
-              <input style={inputStyle} type="password" placeholder="Enter your password" value={password}
-                onChange={e => setPassword(e.target.value)} onKeyDown={e => onKey(e, handleStaffLogin)} />
-            </div>
-          </>
-        )}
-
-        {error && <div className="banner banner-error" style={{ marginBottom: 14 }}>{error}</div>}
-
-        <button style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: loading ? 'var(--muted)' : 'var(--teal)', color: 'var(--navy)', fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'Space Grotesk, sans-serif', marginTop: 4 }}
-          onClick={mode === 'client' ? handleClientLogin : handleStaffLogin} disabled={loading}>
-          {loading ? 'Signing in…' : 'Sign In →'}
-        </button>
-
-        <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: 18, lineHeight: 1.7 }}>
-          {mode === 'client' ? 'Contact your agent if you need login assistance.' : 'Staff accounts are created by the administrator.'}
-        </div>
+        <div className="login-switch">{mode === 'client' ? <><button onClick={() => openLogin('staff')}>Staff login</button><button onClick={() => openLogin('admin')}>Admin login</button></> : <button onClick={() => openLogin('client')}>Client login</button>}</div>
       </div>
     </div>
   )

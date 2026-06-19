@@ -37,7 +37,7 @@ create table if not exists settings (
 );
 
 insert into settings (key, value) values
-  ('company_name', 'OceanAir Logistics'),
+  ('company_name', '234 Cargo Logistics'),
   ('china_warehouse_name', 'SinoShip Warehouse Guangzhou'),
   ('china_warehouse_address', '128 Tianhe Rd, Guangzhou, Guangdong 510620'),
   ('china_warehouse_phone', '+86 020-8888-6666'),
@@ -49,6 +49,7 @@ on conflict (key) do nothing;
 update settings set value = '150000' where key = 'sea_rate_cbm' and value = '150';
 update settings set value = '1200' where key = 'sea_rate_kg' and value = '1.20';
 update settings set value = '18000' where key = 'air_rate_kg' and value = '18.00';
+update settings set value = '234 Cargo Logistics' where key = 'company_name' and value = 'OceanAir Logistics';
 
 -- ── USERS (staff & admin) ─────────────────────────────────
 -- We use Supabase Auth for authentication.
