@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import RecordGoods from '../staff/RecordGoods'
 
 export default function AdminApp() {
   const { profile, signOut } = useAuth()
@@ -33,6 +34,7 @@ export default function AdminApp() {
   const [showAddCont, setShowAddCont] = useState(false)
   const [showEditClient, setShowEditClient] = useState(null)
   const [showEditGoods, setShowEditGoods] = useState(null)
+  const [showRecordGoods, setShowRecordGoods] = useState(false)
   const [showExpenseForm, setShowExpenseForm] = useState(null)
 
   const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
@@ -46,6 +48,7 @@ export default function AdminApp() {
   const [goodsStatusFilter, setGoodsStatusFilter] = useState('all')
   const [goodsSort, setGoodsSort] = useState('newest')
   const [trackingQuery, setTrackingQuery] = useState('')
+  const [clientQuery, setClientQuery] = useState('')
   const reloadTimer = useRef(null)
 
   useEffect(() => {
@@ -230,7 +233,7 @@ export default function AdminApp() {
     { id: 'finance', label: 'Finance', Icon: Wallet },
     { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
-  const activeNav = ['containers', 'messages', 'settings'].includes(tab) ? 'more' : tab
+  const activeNav = ['clients', 'containers', 'messages', 'settings'].includes(tab) ? 'more' : tab
 
   // Group messages by client
   const clientThreads = clients.map(c => ({
@@ -255,10 +258,14 @@ export default function AdminApp() {
     const term = trackingQuery.trim().toLowerCase()
     return !term || [g.tracking_no, g.description, g.client?.full_name, g.client?.shipping_mark].some(value => String(value || '').toLowerCase().includes(term))
   })
+  const filteredClients = clients.filter(client => {
+    const term = clientQuery.trim().toLowerCase()
+    return !term || [client.full_name, client.phone, client.shipping_mark, client.state].some(value => String(value || '').toLowerCase().includes(term))
+  })
 
   return (
     <div className="app-shell">
-      <TopNav role="Admin" title={tab === 'dashboard' ? 'Admin Overview' : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'System Settings'}
+      <TopNav role="Admin" title={tab === 'dashboard' ? 'Admin Overview' : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'System Settings'}
         right={
           <button onClick={signOut} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12 }}>
             <LogOut size={14} style={{ display: 'inline', marginRight: 4 }} />Logout
@@ -347,7 +354,7 @@ export default function AdminApp() {
         {/* GOODS MANAGEMENT */}
         {tab === 'goods' && (
           <>
-            <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, recorded_at: g.created_at })))}><Download size={14} />Export</button>} />
+            <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<div style={{ display: 'flex', gap: 8 }}><button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, recorded_at: g.created_at })))}><Download size={14} />Export</button><button className="btn btn-sm btn-primary" onClick={() => setShowRecordGoods(true)}>+ Record</button></div>} />
             <div className="card" style={{ padding: 12 }}>
               <div className="input-scan-row" style={{ marginBottom: 10 }}><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search client, shipping mark, goods or tracking number" value={goodsQuery} onChange={e => setGoodsQuery(e.target.value)} /></div>
               <div className="filter-row">
@@ -422,10 +429,21 @@ export default function AdminApp() {
           </>
         )}
 
+        {tab === 'clients' && (
+          <>
+            <SectionHeader title={`Clients (${filteredClients.length})`} action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-clients', filteredClients.map(client => ({ full_name: client.full_name, phone: client.phone, state: client.state, country: client.country, shipping_mark: client.shipping_mark, notes: client.notes, registered_at: client.created_at })))}><Download size={14} />Export Excel</button>} />
+            <div className="card" style={{ padding: 12 }}><div className="input-scan-row"><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search name, phone, state or shipping mark" value={clientQuery} onChange={e => setClientQuery(e.target.value)} /></div></div>
+            {filteredClients.length === 0 ? <EmptyState icon="users" title="No matching clients" /> : filteredClients.map(client => (
+              <div key={client.id} className="card"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontWeight: 800 }}>{client.full_name}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{client.phone} · {client.state || 'Nigeria'}</div><div style={{ color: 'var(--teal-d)', fontSize: 13, fontWeight: 800, marginTop: 4 }}>{client.shipping_mark}</div></div><div style={{ color: 'var(--muted)', fontSize: 12 }}>{fmtDate(client.created_at)}</div></div></div>
+            ))}
+          </>
+        )}
+
         {tab === 'more' && (
           <>
             <SectionHeader title="More Tools" />
             {[
+              { id: 'clients', title: 'Client Directory', text: `${clients.length} registered client${clients.length === 1 ? '' : 's'}, with export.`, Icon: Users },
               { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
               { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
               { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
@@ -671,6 +689,10 @@ export default function AdminApp() {
       </Modal>
 
       {/* Goods edit */}
+      <Modal open={showRecordGoods} title="Record New Goods" onClose={() => setShowRecordGoods(false)}>
+        <RecordGoods onDone={() => { setShowRecordGoods(false); loadAll() }} />
+      </Modal>
+
       <Modal open={!!showEditGoods} title="Edit Goods" onClose={() => setShowEditGoods(null)}>
         {showEditGoods && (
           <>
