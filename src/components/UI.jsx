@@ -235,11 +235,21 @@ export function PhotoUploader({ photos = [], onAdd, onRemove, uploading }) {
 
 export function PhotoGallery({ photos = [], compact = false }) {
   const [activeIndex, setActiveIndex] = useState(null)
+  const swipeStartX = useRef(null)
   const list = (photos || []).filter(Boolean)
   if (list.length === 0) return null
   const active = activeIndex === null ? null : list[activeIndex]
   const showPrevious = () => setActiveIndex(index => (index - 1 + list.length) % list.length)
   const showNext = () => setActiveIndex(index => (index + 1) % list.length)
+  const startSwipe = event => { swipeStartX.current = event.clientX }
+  const endSwipe = event => {
+    if (swipeStartX.current === null) return
+    const distance = event.clientX - swipeStartX.current
+    swipeStartX.current = null
+    if (Math.abs(distance) < 40 || list.length < 2) return
+    if (distance < 0) showNext()
+    else showPrevious()
+  }
 
   return (
     <>
@@ -251,7 +261,7 @@ export function PhotoGallery({ photos = [], compact = false }) {
         ))}
       </div>
       <Modal open={activeIndex !== null} title={`Goods Photo${activeIndex !== null ? ` ${activeIndex + 1} of ${list.length}` : ''}`} onClose={() => setActiveIndex(null)}>
-        {active && <div className="photo-viewer">
+        {active && <div className="photo-viewer" onPointerDown={startSwipe} onPointerUp={endSwipe}>
           {list.length > 1 && <button className="photo-viewer-arrow photo-viewer-prev" onClick={showPrevious} aria-label="Previous photo">‹</button>}
           <img src={active} alt={`Goods photo ${(activeIndex || 0) + 1}`} className="photo-preview-img" />
           {list.length > 1 && <button className="photo-viewer-arrow photo-viewer-next" onClick={showNext} aria-label="Next photo">›</button>}

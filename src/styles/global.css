@@ -179,7 +179,7 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .photo-gallery-item { aspect-ratio: 1; }
 .photo-strip-item img, .photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .photo-preview-img { width: 100%; max-height: 70vh; border-radius: 12px; display: block; object-fit: contain; background: var(--ink); }
-.photo-viewer { position: relative; display: flex; align-items: center; justify-content: center; min-height: 220px; background: var(--ink); border-radius: 12px; overflow: hidden; }
+.photo-viewer { position: relative; display: flex; align-items: center; justify-content: center; min-height: 220px; background: var(--ink); border-radius: 12px; overflow: hidden; touch-action: pan-y; user-select: none; }
 .photo-viewer .photo-preview-img { border-radius: 0; max-height: 68vh; }
 .photo-viewer-arrow { position: absolute; z-index: 1; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border: 0; border-radius: 50%; background: rgba(255,255,255,.92); color: var(--ink); cursor: pointer; font-size: 33px; font-weight: 300; line-height: 1; display: grid; place-items: center; }
 .photo-viewer-prev { left: 10px; }.photo-viewer-next { right: 10px; }
