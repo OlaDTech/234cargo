@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
-import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
+import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -115,8 +115,8 @@ export default function AdminApp() {
   const generateReceipt = async () => {
     if (!showReceiptGen) return
     const g = goods.find(x => x.id === showReceiptGen.goods_id)
-    const ratesCbm = parseFloat(settings.sea_rate_cbm || 150)
-    const ratesKg = g?.type === 'air' ? parseFloat(settings.air_rate_kg || 18) : parseFloat(settings.sea_rate_kg || 1.2)
+    const ratesCbm = parseFloat(settings.sea_rate_cbm || 150000)
+    const ratesKg = g?.type === 'air' ? parseFloat(settings.air_rate_kg || 18000) : parseFloat(settings.sea_rate_kg || 1200)
     const items = g?.type === 'sea'
       ? [{ desc: 'Sea Freight (CBM)', qty: parseFloat(g.cbm) || 0, unit_price: ratesCbm }, { desc: 'Weight Surcharge', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
       : [{ desc: 'Air Freight (kg)', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
@@ -124,7 +124,7 @@ export default function AdminApp() {
     const discount = parseFloat(receiptForm.discount) || 0
     const total = subtotal - discount
     const { data: recNo } = await supabase.rpc('generate_receipt_no')
-    const { error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: showReceiptGen.goods_id, items: JSON.stringify(items), subtotal, discount, total, currency: 'MYR', issued_by: profile?.id })
+    const { error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: showReceiptGen.goods_id, items: JSON.stringify(items), subtotal, discount, total, currency: 'NGN', issued_by: profile?.id })
     if (error) { toast.error(error.message); return }
     toast.success('Receipt ' + recNo + ' generated!')
     setShowReceiptGen(null); setReceiptForm({ discount: 0 }); loadAll()
@@ -244,8 +244,8 @@ export default function AdminApp() {
                 { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
                 { label: 'Containers', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
                 { label: 'Messages', value: stats.messages, Icon: MessageCircle, color: 'var(--red)' },
-                { label: 'Paid Income', value: 'MYR ' + Number(stats.paidIncome || 0).toFixed(2), Icon: Wallet, color: 'var(--green)' },
-                { label: 'Expenses', value: 'MYR ' + Number(stats.totalExpenses || 0).toFixed(2), Icon: FileText, color: 'var(--red)' },
+                { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
+                { label: 'Expenses', value: formatMoney(stats.totalExpenses), Icon: FileText, color: 'var(--red)' },
               ].map((s, i) => (
                 <div key={i} className="stat-card">
                   <div className="stat-icon" style={{ background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)' }}><s.Icon size={17} color={s.color} /></div>
@@ -445,10 +445,10 @@ export default function AdminApp() {
             <SectionHeader title="Financial Summary" action={<button className="btn btn-sm btn-primary" onClick={() => openExpenseForm()}>+ Expense</button>} />
             <div className="stat-grid">
               {[
-                { label: 'Paid Income', value: 'MYR ' + Number(stats.paidIncome || 0).toFixed(2), Icon: Wallet, color: 'var(--green)' },
-                { label: 'Unpaid Invoices', value: 'MYR ' + receipts.filter(r => r.status === 'unpaid').reduce((s, r) => s + (parseFloat(r.total) || 0), 0).toFixed(2), Icon: ReceiptText, color: 'var(--amber)' },
-                { label: 'Expenses', value: 'MYR ' + Number(stats.totalExpenses || 0).toFixed(2), Icon: FileText, color: 'var(--red)' },
-                { label: 'Net Balance', value: 'MYR ' + Number(stats.netBalance || 0).toFixed(2), Icon: Boxes, color: Number(stats.netBalance || 0) >= 0 ? 'var(--green)' : 'var(--red)' },
+                { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
+                { label: 'Unpaid Invoices', value: formatMoney(receipts.filter(r => r.status === 'unpaid').reduce((s, r) => s + (parseFloat(r.total) || 0), 0)), Icon: ReceiptText, color: 'var(--amber)' },
+                { label: 'Expenses', value: formatMoney(stats.totalExpenses), Icon: FileText, color: 'var(--red)' },
+                { label: 'Net Balance', value: formatMoney(stats.netBalance), Icon: Boxes, color: Number(stats.netBalance || 0) >= 0 ? 'var(--green)' : 'var(--red)' },
               ].map((s, i) => (
                 <div key={i} className="stat-card">
                   <div className="stat-icon" style={{ background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)' }}><s.Icon size={17} color={s.color} /></div>
@@ -471,7 +471,7 @@ export default function AdminApp() {
                         <td>{fmtDate(exp.expense_date)}</td>
                         <td><div style={{ fontWeight: 600 }}>{exp.title}</div>{exp.notes && <div style={{ color: 'var(--muted)', fontSize: 12 }}>{exp.notes}</div>}</td>
                         <td>{exp.category}</td>
-                        <td className="amount-expense">MYR {Number(exp.amount || 0).toFixed(2)}</td>
+                        <td className="amount-expense">{formatMoney(exp.amount, exp.currency || 'NGN')}</td>
                         <td><button className="btn btn-xs btn-secondary" onClick={() => openExpenseForm(exp)}><Pencil size={12} />Edit</button></td>
                       </tr>
                     ))}
@@ -493,7 +493,7 @@ export default function AdminApp() {
                       <td>{r.receipt_no}</td>
                       <td>{r.client?.full_name}</td>
                       <td>{r.status}</td>
-                      <td className="amount-income">MYR {Number(r.total || 0).toFixed(2)}</td>
+                      <td className="amount-income">{formatMoney(r.total, r.currency || 'NGN')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -532,7 +532,7 @@ export default function AdminApp() {
 
             <div className="card">
               <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>Rates</div>
-              {[['sea_rate_cbm','Sea Freight Rate (MYR/CBM)'],['sea_rate_kg','Sea Surcharge (MYR/kg)'],['air_rate_kg','Air Freight Rate (MYR/kg)']].map(([k,l]) => (
+              {[['sea_rate_cbm','Sea Freight Rate (₦/CBM)'],['sea_rate_kg','Sea Surcharge (₦/kg)'],['air_rate_kg','Air Freight Rate (₦/kg)']].map(([k,l]) => (
                 <div key={k} className="input-group">
                   <label className="input-label">{l}</label>
                   <input className="input-field" type="number" step="0.01" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
@@ -656,7 +656,7 @@ export default function AdminApp() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="input-group">
-            <label className="input-label">Amount (MYR)</label>
+            <label className="input-label">Amount (₦)</label>
             <input className="input-field" type="number" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm(p => ({ ...p, amount: e.target.value }))} />
           </div>
           <div className="input-group">
@@ -682,12 +682,12 @@ export default function AdminApp() {
               <div style={{ fontWeight: 600 }}>{showReceiptGen.goods?.description}</div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
                 {showReceiptGen.goods?.type === 'sea'
-                  ? `Rate: MYR ${settings.sea_rate_cbm}/CBM + MYR ${settings.sea_rate_kg}/kg`
-                  : `Rate: MYR ${settings.air_rate_kg}/kg`}
+                  ? `Rate: ₦${settings.sea_rate_cbm}/CBM + ₦${settings.sea_rate_kg}/kg`
+                  : `Rate: ₦${settings.air_rate_kg}/kg`}
               </div>
             </div>
             <div className="input-group">
-              <label className="input-label">Discount (MYR)</label>
+              <label className="input-label">Discount (₦)</label>
               <input className="input-field" type="number" min="0" step="0.01" placeholder="0.00" value={receiptForm.discount} onChange={e => setReceiptForm(p=>({...p, discount: e.target.value}))} />
             </div>
             <button className="btn btn-primary btn-full" onClick={generateReceipt} style={{ padding: 13 }}>Generate & Issue Receipt</button>

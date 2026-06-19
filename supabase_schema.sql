@@ -41,10 +41,14 @@ insert into settings (key, value) values
   ('china_warehouse_name', 'SinoShip Warehouse Guangzhou'),
   ('china_warehouse_address', '128 Tianhe Rd, Guangzhou, Guangdong 510620'),
   ('china_warehouse_phone', '+86 020-8888-6666'),
-  ('sea_rate_cbm', '150'),
-  ('sea_rate_kg', '1.20'),
-  ('air_rate_kg', '18.00')
+  ('sea_rate_cbm', '150000'),
+  ('sea_rate_kg', '1200'),
+  ('air_rate_kg', '18000')
 on conflict (key) do nothing;
+
+update settings set value = '150000' where key = 'sea_rate_cbm' and value = '150';
+update settings set value = '1200' where key = 'sea_rate_kg' and value = '1.20';
+update settings set value = '18000' where key = 'air_rate_kg' and value = '18.00';
 
 -- ── USERS (staff & admin) ─────────────────────────────────
 -- We use Supabase Auth for authentication.
@@ -142,12 +146,15 @@ create table if not exists receipts (
   subtotal numeric not null default 0,
   discount numeric not null default 0,
   total numeric not null default 0,
-  currency text not null default 'MYR',
+  currency text not null default 'NGN',
   status text not null default 'unpaid' check (status in ('unpaid','paid')),
   issued_by uuid references profiles(id),
   issued_at timestamptz default now(),
   paid_at timestamptz
 );
+
+alter table receipts alter column currency set default 'NGN';
+update receipts set currency = 'NGN' where currency = 'MYR';
 
 create index if not exists receipts_client_id_idx on receipts (client_id);
 create index if not exists receipts_goods_id_idx on receipts (goods_id);
@@ -160,13 +167,16 @@ create table if not exists expenses (
   title text not null,
   category text not null default 'Operations',
   amount numeric not null default 0,
-  currency text not null default 'MYR',
+  currency text not null default 'NGN',
   expense_date date not null default current_date,
   notes text,
   recorded_by uuid references profiles(id),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table expenses alter column currency set default 'NGN';
+update expenses set currency = 'NGN' where currency = 'MYR';
 
 create index if not exists expenses_expense_date_idx on expenses (expense_date desc);
 

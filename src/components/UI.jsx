@@ -304,6 +304,7 @@ export function ShippingLabel({ client, settings = {} }) {
 export function ReceiptView({ receipt, client }) {
   if (!receipt) return null
   const items = typeof receipt.items === 'string' ? JSON.parse(receipt.items) : (receipt.items || [])
+  const currency = receipt.currency || 'NGN'
   return (
     <div style={{ background: 'var(--white)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'flex-start' }}>
@@ -330,19 +331,19 @@ export function ReceiptView({ receipt, client }) {
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
           <div>
             <div style={{ fontWeight: 500 }}>{item.desc}</div>
-            {item.qty !== 1 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{item.qty} × {receipt.currency} {Number(item.unit_price).toFixed(2)}</div>}
+            {item.qty !== 1 && <div style={{ fontSize: 13, color: 'var(--muted)' }}>{item.qty} × {formatMoney(item.unit_price, currency)}</div>}
           </div>
-          <div style={{ fontWeight: 600 }}>{receipt.currency} {(item.qty * item.unit_price).toFixed(2)}</div>
+          <div style={{ fontWeight: 600 }}>{formatMoney(item.qty * item.unit_price, currency)}</div>
         </div>
       ))}
       {receipt.discount > 0 && (
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--success)', margin: '8px 0' }}>
-          <span>Discount</span><span>− {receipt.currency} {Number(receipt.discount).toFixed(2)}</span>
+          <span>Discount</span><span>− {formatMoney(receipt.discount, currency)}</span>
         </div>
       )}
       <div className="receipt-total">
         <span style={{ fontWeight: 700, fontSize: 17 }}>Total</span>
-        <span style={{ fontWeight: 800, fontSize: 22, color: 'var(--teal-dark)' }}>{receipt.currency} {Number(receipt.total).toFixed(2)}</span>
+        <span style={{ fontWeight: 800, fontSize: 22, color: 'var(--teal-dark)' }}>{formatMoney(receipt.total, currency)}</span>
       </div>
     </div>
   )
@@ -445,3 +446,10 @@ export function Confirm({ open, title, message, onConfirm, onCancel, danger }) {
 export const fmtDate = (d) => d ? format(new Date(d), 'dd MMM yyyy') : '—'
 export const fmtDateTime = (d) => d ? format(new Date(d), 'dd MMM yyyy, HH:mm') : '—'
 export const fmtAgo = (d) => d ? formatDistanceToNow(new Date(d), { addSuffix: true }) : ''
+export const formatMoney = (amount, currency = 'NGN') => {
+  const value = Number(amount || 0)
+  if (currency === 'NGN' || currency === '₦') {
+    return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+  return `${currency} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
