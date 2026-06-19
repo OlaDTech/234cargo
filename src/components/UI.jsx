@@ -234,21 +234,28 @@ export function PhotoUploader({ photos = [], onAdd, onRemove, uploading }) {
 }
 
 export function PhotoGallery({ photos = [], compact = false }) {
-  const [active, setActive] = useState(null)
+  const [activeIndex, setActiveIndex] = useState(null)
   const list = (photos || []).filter(Boolean)
   if (list.length === 0) return null
+  const active = activeIndex === null ? null : list[activeIndex]
+  const showPrevious = () => setActiveIndex(index => (index - 1 + list.length) % list.length)
+  const showNext = () => setActiveIndex(index => (index + 1) % list.length)
 
   return (
     <>
       <div className={compact ? 'photo-strip' : 'photo-gallery'}>
         {list.map((url, i) => (
-          <button key={`${url}-${i}`} className={compact ? 'photo-strip-item' : 'photo-gallery-item'} onClick={() => setActive(url)}>
+          <button key={`${url}-${i}`} className={compact ? 'photo-strip-item' : 'photo-gallery-item'} onClick={() => setActiveIndex(i)}>
             <img src={url} alt={`Goods photo ${i + 1}`} loading="lazy" />
           </button>
         ))}
       </div>
-      <Modal open={!!active} title="Goods Photo" onClose={() => setActive(null)}>
-        {active && <img src={active} alt="Goods" className="photo-preview-img" />}
+      <Modal open={activeIndex !== null} title={`Goods Photo${activeIndex !== null ? ` ${activeIndex + 1} of ${list.length}` : ''}`} onClose={() => setActiveIndex(null)}>
+        {active && <div className="photo-viewer">
+          {list.length > 1 && <button className="photo-viewer-arrow photo-viewer-prev" onClick={showPrevious} aria-label="Previous photo">‹</button>}
+          <img src={active} alt={`Goods photo ${(activeIndex || 0) + 1}`} className="photo-preview-img" />
+          {list.length > 1 && <button className="photo-viewer-arrow photo-viewer-next" onClick={showNext} aria-label="Next photo">›</button>}
+        </div>}
       </Modal>
     </>
   )
