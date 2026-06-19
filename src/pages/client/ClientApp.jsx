@@ -109,7 +109,7 @@ export default function ClientApp() {
                 <div>
                   <div style={{ color: 'var(--white)', fontWeight: 700, fontSize: 18, fontFamily: 'Space Grotesk, sans-serif' }}>{clientUser.full_name}</div>
                   <div style={{ color: 'var(--teal)', fontSize: 13 }}>{clientUser.phone}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{clientUser.country}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{clientUser.state || clientUser.country}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 14px' }}>

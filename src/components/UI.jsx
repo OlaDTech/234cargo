@@ -275,7 +275,7 @@ export function ShippingLabel({ client, settings = {} }) {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Consignee</div>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--t1)', marginTop: 2 }}>{client.full_name}</div>
-            <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 1 }}>{client.country}</div>
+            <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 1 }}>{client.state || client.country}</div>
             <div style={{ fontSize: 12, color: 'var(--t2)' }}>{client.phone}</div>
           </div>
           <div style={{ textAlign: 'center' }}>

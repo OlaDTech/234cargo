@@ -132,7 +132,7 @@ export async function getGoods(filters = {}) {
     .from('goods')
     .select(`
       *,
-      client:clients(id, full_name, phone, shipping_mark, country),
+      client:clients(id, full_name, phone, shipping_mark, country, state),
       container:containers(container_no, status, route)
     `)
     .order('created_at', { ascending: false })

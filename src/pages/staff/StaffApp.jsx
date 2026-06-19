@@ -6,6 +6,7 @@ import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, E
 import RecordGoods from './RecordGoods'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 
 export default function StaffApp() {
   const { profile, signOut } = useAuth()
@@ -20,7 +21,7 @@ export default function StaffApp() {
   const [scanOpen, setScanOpen] = useState(false)
   const [scanResult, setScanResult] = useState(null)
   const [showAddClient, setShowAddClient] = useState(false)
-  const [newClient, setNewClient] = useState({ full_name: '', phone: '', country: 'Malaysia', password_hash: '' })
+  const [newClient, setNewClient] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '' })
   const reloadTimer = useRef(null)
 
   useEffect(() => {
@@ -46,9 +47,8 @@ export default function StaffApp() {
 
   const loadAll = async (showLoader = true) => {
     if (showLoader) setLoading(true)
-    const [{ data: s }, { data: c }, { data: g }, { data: cfg }] = await Promise.all([
-      supabase.from('clients').select('id,full_name,phone,shipping_mark,country,created_at').order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,full_name,phone,shipping_mark,country,created_at').order('created_at', { ascending: false }),
+    const [{ data: s }, { data: g }, { data: cfg }] = await Promise.all([
+      supabase.from('clients').select('id,full_name,phone,shipping_mark,country,state,created_at').order('created_at', { ascending: false }),
       supabase.from('goods').select('*,client:clients(full_name,shipping_mark)').order('created_at', { ascending: false }),
       supabase.from('settings').select('key,value'),
     ])
@@ -91,7 +91,7 @@ export default function StaffApp() {
       if (error) throw error
       toast.success('Client registered! Mark: ' + mark)
       setShowAddClient(false)
-      setNewClient({ full_name: '', phone: '', country: 'Malaysia', password_hash: '' })
+      setNewClient({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '' })
       loadAll()
     } catch (e) { toast.error(e.message) }
   }
@@ -183,7 +183,7 @@ export default function StaffApp() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 15 }}>{c.full_name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{c.phone} · {c.country}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{c.phone} · {c.state || c.country}</div>
                       <div style={{ fontSize: 12, color: 'var(--teal-dark)', fontWeight: 600, marginTop: 2 }}>{c.shipping_mark}</div>
                     </div>
                     <div style={{ color: 'var(--muted)', fontSize: 11 }}>{fmtDate(c.created_at)}</div>
@@ -321,8 +321,12 @@ export default function StaffApp() {
         </div>
         <div className="input-group">
           <label className="input-label">Country</label>
-          <select className="input-field" value={newClient.country} onChange={e => setNewClient(p=>({...p, country: e.target.value}))}>
-            {['Malaysia','Singapore','Indonesia','Thailand','Philippines','Brunei'].map(c => <option key={c}>{c}</option>)}
+          <input className="input-field" value={NIGERIA_COUNTRY} readOnly />
+        </div>
+        <div className="input-group">
+          <label className="input-label">State</label>
+          <select className="input-field" value={newClient.state} onChange={e => setNewClient(p=>({...p, country: NIGERIA_COUNTRY, state: e.target.value}))}>
+            {NIGERIA_STATES.map(state => <option key={state} value={state}>{state}</option>)}
           </select>
         </div>
         <div className="input-group">

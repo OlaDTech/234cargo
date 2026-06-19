@@ -64,7 +64,8 @@ create table if not exists clients (
   id uuid primary key default uuid_generate_v4(),
   full_name text not null,
   phone text not null unique,
-  country text not null default 'Malaysia',
+  country text not null default 'Nigeria',
+  state text not null default 'Lagos',
   shipping_mark text not null unique,
   password_hash text not null,  -- bcrypt hash, handled by Edge Function
   notes text,
@@ -72,6 +73,13 @@ create table if not exists clients (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table clients add column if not exists state text not null default 'Lagos';
+alter table clients alter column country set default 'Nigeria';
+
+create index if not exists clients_phone_idx on clients (phone);
+create index if not exists clients_shipping_mark_idx on clients (shipping_mark);
+create index if not exists clients_created_at_idx on clients (created_at desc);
 
 -- ── GOODS ─────────────────────────────────────────────────
 create table if not exists goods (
@@ -118,6 +126,12 @@ alter table goods drop constraint if exists goods_container_id_fkey;
 alter table goods add constraint goods_container_id_fkey
   foreign key (container_id) references containers(id) on delete set null;
 
+create index if not exists goods_client_id_idx on goods (client_id);
+create index if not exists goods_tracking_no_idx on goods (tracking_no);
+create index if not exists goods_container_id_idx on goods (container_id);
+create index if not exists goods_status_idx on goods (status);
+create index if not exists goods_created_at_idx on goods (created_at desc);
+
 -- ── RECEIPTS ──────────────────────────────────────────────
 create table if not exists receipts (
   id uuid primary key default uuid_generate_v4(),
@@ -135,6 +149,11 @@ create table if not exists receipts (
   paid_at timestamptz
 );
 
+create index if not exists receipts_client_id_idx on receipts (client_id);
+create index if not exists receipts_goods_id_idx on receipts (goods_id);
+create index if not exists receipts_issued_at_idx on receipts (issued_at desc);
+create index if not exists receipts_status_idx on receipts (status);
+
 -- ── EXPENSES / FINANCE ────────────────────────────────────
 create table if not exists expenses (
   id uuid primary key default uuid_generate_v4(),
@@ -148,6 +167,8 @@ create table if not exists expenses (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+create index if not exists expenses_expense_date_idx on expenses (expense_date desc);
 
 -- ── ANNOUNCEMENTS ─────────────────────────────────────────
 create table if not exists announcements (
@@ -179,6 +200,8 @@ create table if not exists messages (
   is_read boolean default false,
   created_at timestamptz default now()
 );
+
+create index if not exists messages_client_id_created_at_idx on messages (client_id, created_at);
 
 -- ── SCAN LOG ──────────────────────────────────────────────
 create table if not exists scan_logs (

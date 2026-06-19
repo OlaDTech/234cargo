@@ -83,7 +83,7 @@ The included `_redirects` file routes all paths to `index.html` so client-side r
 
 ## 6. How key flows work
 
-**Registering a client (staff/admin):** Clients tab → Register → fill name, phone, country, set an initial password → shipping mark is auto-generated via the `generate_shipping_mark` Postgres function (format `MY-001-ABC`).
+**Registering a client (staff/admin):** Clients tab → Register → fill name, phone, Nigerian state, set an initial password → shipping mark is auto-generated via the `generate_shipping_mark` Postgres function (format `MY-001-ABC`).
 
 **Recording goods (staff):** Record Goods → scan the client's QR/shipping mark or search by name/phone → choose Sea or Air → for sea, enter L×W×H in cm and CBM is calculated automatically (L×W×H÷1,000,000); for air, only weight + photo + tracking number are needed → optionally scan the courier barcode into the tracking field → save. The record appears instantly in that client's portal.
 

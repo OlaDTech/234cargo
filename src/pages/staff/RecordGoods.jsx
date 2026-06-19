@@ -36,7 +36,7 @@ export default function RecordGoods({ onDone }) {
     if (!clientQuery.trim() || client) { setClientSuggestions([]); return }
     const t = setTimeout(async () => {
       setSearching(true)
-      const { data } = await supabase.from('clients').select('id,full_name,phone,shipping_mark,country')
+      const { data } = await supabase.from('clients').select('id,full_name,phone,shipping_mark,country,state')
         .or(`phone.ilike.%${clientQuery}%,shipping_mark.ilike.%${clientQuery}%,full_name.ilike.%${clientQuery}%`)
         .limit(5)
       setClientSuggestions(data || [])
@@ -193,7 +193,7 @@ export default function RecordGoods({ onDone }) {
                 <div>
                   <div style={{ color: 'var(--white)', fontWeight: 700, fontSize: 15 }}>{client.full_name}</div>
                   <div style={{ color: 'var(--teal)', fontSize: 12, fontWeight: 600 }}>{client.shipping_mark}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{client.phone} · {client.country}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{client.phone} · {client.state || client.country}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
