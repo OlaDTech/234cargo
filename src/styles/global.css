@@ -158,6 +158,8 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 
 .shipping-label { background: var(--white); border-radius: var(--radius-lg); border: 1px solid var(--line2); overflow: hidden; box-shadow: var(--shadow-sm); }
 .shipping-label-mark { background: var(--ink); color: #fff; border-radius: var(--radius-md); padding: 12px 14px; text-align: center; margin: 14px 0 0; }
+.shipping-method-badge { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 900; letter-spacing: .8px; }
+.shipping-method-sea { background: var(--blue-bg); color: var(--blue); }.shipping-method-air { background: var(--violet-bg); color: var(--violet); }
 
 .toast-success { background: var(--ink) !important; color: #fff !important; }
 

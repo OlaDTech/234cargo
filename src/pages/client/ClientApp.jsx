@@ -19,6 +19,7 @@ export default function ClientApp() {
   const [selectedGoods, setSelectedGoods] = useState(null)
   const [selectedReceipt, setSelectedReceipt] = useState(null)
   const [showLabel, setShowLabel] = useState(false)
+  const [labelShipmentType, setLabelShipmentType] = useState('sea')
   const reloadTimer = useRef(null)
 
   useEffect(() => { loadAll() }, [clientUser.id])
@@ -80,6 +81,7 @@ export default function ClientApp() {
   const inTransit = goods.filter(g => g.status === 'in_transit').length
   const delivered = goods.filter(g => g.status === 'delivered').length
   const unreadMsgs = messages.filter(m => m.sender !== 'client').length
+  const LabelMethodPicker = () => <div className="tab-row" style={{ marginBottom: 14 }}><button className={`tab-btn ${labelShipmentType === 'sea' ? 'active' : ''}`} onClick={() => setLabelShipmentType('sea')}>Sea Freight</button><button className={`tab-btn ${labelShipmentType === 'air' ? 'active' : ''}`} onClick={() => setLabelShipmentType('air')}>Air Freight</button></div>
 
   return (
     <div className="app-shell">
@@ -217,9 +219,10 @@ export default function ClientApp() {
           <>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Your Shipping Label</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>Show or print this label for your supplier to attach to your goods</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>Choose how this package will ship, then send this label to your supplier before they ship it to our warehouse.</div>
             </div>
-            <ShippingLabel client={clientUser} settings={settings} />
+            <LabelMethodPicker />
+            <ShippingLabel client={clientUser} settings={settings} shipmentType={labelShipmentType} />
             <button onClick={() => window.print()} className="btn btn-navy btn-full" style={{ marginTop: 16, padding: 14 }}>
               Print / Download Label
             </button>
@@ -326,7 +329,8 @@ export default function ClientApp() {
 
       {/* Shipping label modal */}
       <Modal open={showLabel} title="Shipping Label" onClose={() => setShowLabel(false)}>
-        <ShippingLabel client={clientUser} settings={settings} />
+        <LabelMethodPicker />
+        <ShippingLabel client={clientUser} settings={settings} shipmentType={labelShipmentType} />
         <button onClick={() => window.print()} className="btn btn-navy btn-full" style={{ marginTop: 12 }}>Print Label</button>
       </Modal>
     </div>

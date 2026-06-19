@@ -7,15 +7,18 @@ import toast from 'react-hot-toast'
 const EMPTY_SEA = { description: '', length_cm: '', width_cm: '', height_cm: '', quantity: '1', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
 const EMPTY_AIR = { description: '', quantity: '1', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
 
-function normalizeClientScan(value) {
+function parseClientScan(value) {
   const raw = String(value || '').trim()
-  if (!raw) return ''
-  if (raw.startsWith('OA:')) return raw.split(':')[1]?.trim() || raw
+  if (!raw) return { identifier: '', shipmentType: null }
+  const parts = raw.split(':')
+  if ((parts[0] === '234' || parts[0] === 'OA') && parts[1]) {
+    return { identifier: parts[1].trim(), shipmentType: ['sea', 'air'].includes(parts[2]) ? parts[2] : null }
+  }
   try {
     const parsed = JSON.parse(raw)
-    return parsed.shipping_mark || parsed.shippingMark || parsed.phone || raw
+    return { identifier: parsed.shipping_mark || parsed.shippingMark || parsed.phone || raw, shipmentType: parsed.shipment_type || parsed.shipmentType || null }
   } catch {
-    return raw
+    return { identifier: raw, shipmentType: null }
   }
 }
 
@@ -58,8 +61,9 @@ export default function RecordGoods({ onDone }) {
   }, [clientQuery, client])
 
   const handleScanResult = async (val) => {
-    const scanned = normalizeClientScan(val)
+    const { identifier: scanned, shipmentType } = parseClientScan(val)
     setClientQuery(scanned)
+    if (shipmentType) setGoodsType(shipmentType)
     // Try exact match first
     const { data } = await supabase.from('clients').select('*')
       .or(`phone.eq.${scanned},shipping_mark.eq.${scanned}`)

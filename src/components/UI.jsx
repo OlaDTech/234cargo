@@ -256,7 +256,8 @@ export function PhotoGallery({ photos = [], compact = false }) {
 
 export function ShippingLabel({ client, settings = {}, shipmentType }) {
   if (!client) return null
-  const payload = client.shipping_mark || ''
+  const method = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'general'
+  const payload = `234:${client.shipping_mark || ''}:${method}`
   return (
     <div className="shipping-label">
       {/* Brand header bar */}
@@ -271,6 +272,7 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
         <Icons.box size={18} color="rgba(255,255,255,0.85)" />
       </div>
       <div style={{ padding: 16 }}>
+        {method !== 'general' && <div className={`shipping-method-badge shipping-method-${method}`}>{method === 'air' ? 'AIR FREIGHT' : 'SEA FREIGHT'}</div>}
         <div style={{ display: 'flex', gap: 14 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Consignee</div>
@@ -283,7 +285,7 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
               <QRCode value={payload} size={84} fg="#0A1628" />
             </div>
             <div style={{ fontSize: 8.5, color: 'var(--t3)', marginTop: 4, letterSpacing: 0.4 }}>SCAN TO TRACK</div>
-            <div style={{ fontSize: 8.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 700 }}>{payload}</div>
+            <div style={{ fontSize: 8.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 700 }}>{client.shipping_mark}</div>
           </div>
         </div>
         {shipmentType && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><TypePill type={shipmentType} /></div>}
