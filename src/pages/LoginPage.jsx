@@ -65,17 +65,17 @@ export default function LoginPage() {
         </nav>
 
         <section className="public-hero">
-          <div className="public-hero-copy"><div className="public-eyebrow">Nigeria to China freight forwarding</div><h1>234 Cargo</h1><p>Clear shipment tracking and dependable sea and air freight for businesses and shoppers across Nigeria.</p><div className="public-hero-actions"><button className="btn btn-primary" onClick={() => openLogin('client')}>Track My Shipment</button><a className="btn btn-secondary" href="#services">Our Services</a></div></div>
+          <div className="public-hero-copy"><div className="public-eyebrow">China to Nigeria buying and shipping</div><h1>234 Cargo</h1><p>Send your product links, pay in RMB through us, and receive reliable sea or air freight delivery in Nigeria.</p><div className="public-hero-actions"><button className="btn btn-primary" onClick={() => openLogin('client')}>Track My Shipment</button><a className="btn btn-secondary" href="#services">Our Services</a></div></div>
           <div className="public-hero-image" role="img" aria-label="Cargo containers ready for shipment" />
         </section>
 
         <section id="services" className="public-section"><div className="public-section-heading"><div className="public-eyebrow">How we help</div><h2>Freight built for your business</h2></div><div className="service-grid">
-          <article><span className="service-icon"><Icons.ship size={25} /></span><h3>Sea Freight</h3><p>Cost-effective consolidated cargo for larger shipments and regular restocking.</p></article>
-          <article><span className="service-icon"><Icons.plane size={25} /></span><h3>Air Freight</h3><p>Faster delivery for urgent stock, samples and lightweight parcels.</p></article>
-          <article><span className="service-icon"><Icons.box size={25} /></span><h3>Package Tracking</h3><p>See warehouse, transit and delivery updates from one client portal.</p></article>
+          <article><span className="service-icon"><Icons.box size={25} /></span><h3>We Buy for You</h3><p>Send links from 1688, Taobao or Pinduoduo. We buy your items and arrange delivery.</p></article>
+          <article><span className="service-icon"><Icons.ship size={25} /></span><h3>Sea and Air Freight</h3><p>Choose affordable sea freight or faster air freight from China to Nigeria.</p></article>
+          <article><span className="service-icon"><Icons.plane size={25} /></span><h3>RMB Payment Help</h3><p>Pay us in Naira and we help you complete RMB payments to your Chinese supplier.</p></article>
         </div></section>
 
-        <section className="public-section public-process"><div><div className="public-eyebrow">Simple process</div><h2>From supplier to your doorstep</h2></div><ol><li><strong>Send your shipping mark</strong><span>Give your unique 234 Cargo mark to your supplier.</span></li><li><strong>We record your goods</strong><span>Our warehouse team logs each package, photo and tracking number.</span></li><li><strong>Follow every update</strong><span>Sign in anytime to check your shipment and receipts.</span></li></ol></section>
+        <section className="public-section public-process"><div><div className="public-eyebrow">Simple process</div><h2>From China to your doorstep</h2></div><ol><li><strong>Send your product links</strong><span>Share 1688, Taobao or Pinduoduo links with our team for a purchase quote.</span></li><li><strong>Pay in Naira, we pay RMB</strong><span>Make your local payment and we handle the RMB payment to the Chinese seller.</span></li><li><strong>Track your shipment</strong><span>We record your goods, then you follow warehouse, transit and delivery updates online.</span></li></ol></section>
 
         <section className="public-cta"><div><h2>Already shipping with us?</h2><p>Sign in to view your goods, receipts and messages.</p></div><button className="btn btn-primary" onClick={() => openLogin('client')}>Client Login</button></section>
         <footer className="public-footer"><span>234 Cargo Logistics</span><span>Sea and air freight forwarding</span></footer>
