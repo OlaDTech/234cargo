@@ -6,6 +6,7 @@ import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, E
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
+import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 
 export default function AdminApp() {
   const { profile, signOut } = useAuth()
@@ -193,6 +194,20 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const updateTeamRole = async (member, role) => {
+    if (member.id === profile?.id) {
+      toast.error('You cannot change your own administrator role')
+      return
+    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role, permissions: DEFAULT_PERMISSIONS_BY_ROLE[role] })
+      .eq('id', member.id)
+    if (error) { toast.error(error.message); return }
+    toast.success(`${member.full_name} is now ${roleLabel(role)}`)
+    loadAll()
+  }
+
   const openExpenseForm = (expense = null) => {
     setShowExpenseForm(expense || {})
     setExpenseForm(expense ? {
@@ -362,13 +377,19 @@ export default function AdminApp() {
             </div>
 
             {/* Staff permissions */}
-            <SectionHeader title="Staff Accounts" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{staffList.length} members</span>} />
+            <SectionHeader title="Team Roles and Permissions" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{staffList.length} members</span>} />
             {staffList.map(s => (
               <div key={s.id} className="card">
-                <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{s.full_name} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>· {s.role}</span></div>
+                <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{s.full_name} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>- {roleLabel(s.role)}</span></div>
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>{s.phone}</div>
+                <div className="input-group" style={{ marginBottom: 12 }}>
+                  <label className="input-label">Role</label>
+                  <select className="input-field" value={s.role} disabled={s.id === profile?.id} onChange={event => updateTeamRole(s, event.target.value)}>
+                    {ROLE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {['dashboard','clients','goods','scan','finance','messages'].map(perm => {
+                  {PERMISSIONS.map(perm => {
                     const has = (s.permissions || []).includes(perm)
                     return (
                       <button key={perm} onClick={() => togglePermission(s.id, perm, s.permissions || [])} style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: has ? 'var(--teal)' : 'var(--surface)', color: has ? 'var(--navy)' : 'var(--muted)', fontWeight: has ? 700 : 400, fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}>

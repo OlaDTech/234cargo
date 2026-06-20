@@ -20,11 +20,11 @@ export function AuthProvider({ children }) {
       throw new Error('This email can sign in, but no staff/admin profile is linked to it. Add this user UUID to the profiles table.')
     }
 
-    if (!['staff', 'admin'].includes(p.role)) {
+    if (!['staff', 'warehouse_manager', 'admin'].includes(p.role)) {
       await supabase.auth.signOut()
       setUser(null)
       setProfile(null)
-      throw new Error('This account is not assigned a staff or admin role.')
+      throw new Error('This account is not assigned a team role.')
     }
 
     setUser(authUser)
@@ -109,13 +109,14 @@ export function AuthProvider({ children }) {
 
   const isAdmin = profile?.role === 'admin'
   const isStaff = profile?.role === 'staff'
+  const isWarehouseManager = profile?.role === 'warehouse_manager'
   const isClient = !!clientUser
   const hasPermission = (perm) => isAdmin || (profile?.permissions || []).includes(perm)
 
   return (
     <AuthContext.Provider value={{
       user, profile, clientUser,
-      loading, isAdmin, isStaff, isClient,
+      loading, isAdmin, isStaff, isWarehouseManager, isClient,
       hasPermission,
       signInStaff, signInClient, signOut, refreshStaffProfile,
       activeRole: clientUser ? 'client' : (profile?.role || null)

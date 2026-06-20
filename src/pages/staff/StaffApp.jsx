@@ -7,6 +7,7 @@ import RecordGoods from './RecordGoods'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
+import { roleLabel } from '../../lib/roles'
 
 export default function StaffApp() {
   const { profile, signOut, hasPermission, refreshStaffProfile } = useAuth()
@@ -174,7 +175,7 @@ export default function StaffApp() {
 
   return (
     <div className="app-shell">
-      <TopNav role="Staff" title={tab === 'dashboard' ? 'Dashboard' : tab === 'clients' ? 'Clients' : tab === 'goods' ? 'Goods Records' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'Quick Scan'}
+      <TopNav role={roleLabel(profile?.role)} title={tab === 'dashboard' ? 'Dashboard' : tab === 'clients' ? 'Clients' : tab === 'goods' ? 'Goods Records' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'Quick Scan'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--teal)', color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>

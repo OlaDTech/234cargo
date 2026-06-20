@@ -58,11 +58,16 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null,
   phone text,
-  role text not null check (role in ('admin', 'staff')),
+  role text not null check (role in ('admin', 'staff', 'warehouse_manager')),
   permissions text[] default array['dashboard'],
   avatar_url text,
   created_at timestamptz default now()
 );
+
+-- Keeps existing projects compatible when this schema is re-run.
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('admin', 'staff', 'warehouse_manager'));
 
 -- ── CLIENTS ───────────────────────────────────────────────
 create table if not exists clients (
@@ -282,13 +287,29 @@ returns text language sql security definer as $$
   select role from profiles where id = auth.uid()
 $$;
 
+-- Admins always have full access. Staff and warehouse managers are scoped
+-- by the permissions selected in the admin workspace.
+create or replace function has_permission(required_permission text)
+returns boolean language sql security definer set search_path = public as $$
+  select coalesce(
+    (
+      select role = 'admin'
+        or required_permission = any(coalesce(permissions, '{}'::text[]))
+      from profiles
+      where id = auth.uid()
+    ),
+    false
+  )
+$$;
+
 -- PROFILES: users see own profile; admin sees all
 drop policy if exists "profiles_select" on profiles;
 create policy "profiles_select" on profiles for select
-  using (id = auth.uid() or get_my_role() in ('admin','staff'));
+  using (id = auth.uid() or get_my_role() = 'admin');
 drop policy if exists "profiles_update" on profiles;
 create policy "profiles_update" on profiles for update
-  using (id = auth.uid() or get_my_role() = 'admin');
+  using (get_my_role() = 'admin')
+  with check (get_my_role() = 'admin');
 drop policy if exists "profiles_insert" on profiles;
 create policy "profiles_insert" on profiles for insert
   with check (get_my_role() = 'admin');
@@ -305,24 +326,30 @@ create policy "settings_write" on settings for all using (get_my_role() = 'admin
 -- Only non-sensitive columns should be exposed this way in production —
 -- see README "Hardening" section for moving login to an Edge Function.
 drop policy if exists "clients_staff_admin_all" on clients;
-create policy "clients_staff_admin_all" on clients for all using (get_my_role() in ('admin','staff'));
+create policy "clients_staff_admin_all" on clients for all
+  using (has_permission('clients'))
+  with check (has_permission('clients'));
 drop policy if exists "clients_public_login_read" on clients;
 create policy "clients_public_login_read" on clients for select using (true);
 
 -- GOODS: staff & admin manage; clients can read (filtered client-side by client_id,
 -- since the client portal has no Supabase Auth session to scope a policy to)
 drop policy if exists "goods_staff_admin_all" on goods;
-create policy "goods_staff_admin_all" on goods for all using (get_my_role() in ('admin','staff'));
+create policy "goods_staff_admin_all" on goods for all
+  using (has_permission('goods') or has_permission('scan'))
+  with check (has_permission('goods') or has_permission('scan'));
 drop policy if exists "goods_public_read" on goods;
 create policy "goods_public_read" on goods for select using (true);
 
 -- CONTAINERS: staff & admin
 drop policy if exists "containers_all" on containers;
-create policy "containers_all" on containers for all using (get_my_role() in ('admin','staff'));
+create policy "containers_all" on containers for all
+  using (has_permission('goods') or has_permission('scan'))
+  with check (has_permission('goods') or has_permission('scan'));
 
 -- RECEIPTS: admin manages; staff reads; clients read their own (filtered client-side)
 drop policy if exists "receipts_staff_admin_read" on receipts;
-create policy "receipts_staff_admin_read" on receipts for select using (get_my_role() in ('admin','staff'));
+create policy "receipts_staff_admin_read" on receipts for select using (has_permission('finance'));
 drop policy if exists "receipts_public_read" on receipts;
 create policy "receipts_public_read" on receipts for select using (true);
 drop policy if exists "receipts_write" on receipts;
@@ -349,7 +376,9 @@ create policy "sup_write" on suppliers for all using (get_my_role() = 'admin');
 -- MESSAGES: staff/admin manage all; clients can read/insert their own thread
 -- (client_id is enforced application-side since clients have no auth.uid())
 drop policy if exists "msg_staff_admin_all" on messages;
-create policy "msg_staff_admin_all" on messages for all using (get_my_role() in ('admin','staff'));
+create policy "msg_staff_admin_all" on messages for all
+  using (has_permission('messages'))
+  with check (has_permission('messages'));
 drop policy if exists "msg_public_read" on messages;
 create policy "msg_public_read" on messages for select using (true);
 drop policy if exists "msg_public_insert" on messages;
@@ -357,7 +386,9 @@ create policy "msg_public_insert" on messages for insert with check (sender = 'c
 
 -- SCAN LOG
 drop policy if exists "scan_all" on scan_logs;
-create policy "scan_all" on scan_logs for all using (get_my_role() in ('admin','staff'));
+create policy "scan_all" on scan_logs for all
+  using (has_permission('scan'))
+  with check (has_permission('scan'));
 
 -- ============================================================
 -- FUNCTIONS & TRIGGERS
@@ -419,9 +450,9 @@ create policy "goods_photos_public_read" on storage.objects for select
 
 drop policy if exists "goods_photos_staff_upload" on storage.objects;
 create policy "goods_photos_staff_upload" on storage.objects for insert
-  with check (bucket_id = 'goods-photos' and get_my_role() in ('admin','staff'));
+  with check (bucket_id = 'goods-photos' and has_permission('goods'));
 
 drop policy if exists "goods_photos_staff_update" on storage.objects;
 create policy "goods_photos_staff_update" on storage.objects for update
-  using (bucket_id = 'goods-photos' and get_my_role() in ('admin','staff'))
-  with check (bucket_id = 'goods-photos' and get_my_role() in ('admin','staff'));
+  using (bucket_id = 'goods-photos' and has_permission('goods'))
+  with check (bucket_id = 'goods-photos' and has_permission('goods'));

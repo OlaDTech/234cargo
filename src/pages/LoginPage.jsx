@@ -47,7 +47,7 @@ export default function LoginPage() {
         await supabase.auth.signOut()
         throw new Error('This account is not an administrator account.')
       }
-      if (loginRole === 'staff' && profile?.role !== 'staff') {
+      if (loginRole === 'staff' && !['staff', 'warehouse_manager'].includes(profile?.role)) {
         await supabase.auth.signOut()
         throw new Error('Please use the administrator login for this account.')
       }

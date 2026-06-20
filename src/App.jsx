@@ -49,7 +49,7 @@ function Gate() {
 
   if (!activeRole) return <LoginPage />
   if (activeRole === 'admin') return <AdminApp />
-  if (activeRole === 'staff') return <StaffApp />
+  if (activeRole === 'staff' || activeRole === 'warehouse_manager') return <StaffApp />
   if (activeRole === 'client') return <ClientApp />
   return <LoginPage />
 }
