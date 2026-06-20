@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
@@ -81,19 +81,18 @@ export default function ClientApp() {
   const inTransit = goods.filter(g => g.status === 'in_transit').length
   const delivered = goods.filter(g => g.status === 'delivered').length
   const unreadMsgs = messages.filter(m => m.sender !== 'client').length
+  const currentShipment = goods.find(g => g.status !== 'delivered') || goods[0]
   const LabelMethodPicker = () => <div className="tab-row" style={{ marginBottom: 14 }}><button className={`tab-btn ${labelShipmentType === 'sea' ? 'active' : ''}`} onClick={() => setLabelShipmentType('sea')}>Sea Freight</button><button className={`tab-btn ${labelShipmentType === 'air' ? 'active' : ''}`} onClick={() => setLabelShipmentType('air')}>Air Freight</button></div>
 
   return (
-    <div className="app-shell">
+    <div className="app-shell client-app">
       <TopNav role="Client Portal" title={settings.company_name || '234 Cargo Logistics'}
         right={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--teal)', color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>
+          <div className="client-header-actions">
+            <div className="client-header-avatar">
               {clientUser.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
             </div>
-            <button onClick={signOut} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12 }}>
-              <LogOut size={14} style={{ display: 'inline', marginRight: 4 }} />Out
-            </button>
+            <button className="client-logout" onClick={signOut} title="Log out" aria-label="Log out"><LogOut size={18} /></button>
           </div>
         }
       />
@@ -103,56 +102,33 @@ export default function ClientApp() {
         {/* HOME */}
         {tab === 'home' && (
           <>
-            {/* Profile hero */}
-            <div style={{ background: 'linear-gradient(135deg, var(--navy), var(--navy-mid))', borderRadius: 20, padding: '20px 18px', marginBottom: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--teal)', color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flexShrink: 0 }}>
-                  {clientUser.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ color: 'var(--white)', fontWeight: 700, fontSize: 18, fontFamily: 'Space Grotesk, sans-serif' }}>{clientUser.full_name}</div>
-                  <div style={{ color: 'var(--teal)', fontSize: 13 }}>{clientUser.phone}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{clientUser.state || clientUser.country}</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 14px' }}>
-                <div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Shipping Mark</div>
-                  <div style={{ color: 'var(--white)', fontWeight: 800, fontSize: 18, letterSpacing: 2, marginTop: 2 }}>{clientUser.shipping_mark}</div>
-                </div>
-                <button onClick={() => setShowLabel(true)} style={{ background: 'var(--teal)', border: 'none', borderRadius: 10, padding: '8px 14px', color: 'var(--navy)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>View Label</button>
-              </div>
-            </div>
+            <section className="client-welcome">
+              <div><div className="client-welcome-kicker">Client portal</div><h1>Hello, {clientUser.full_name.split(' ')[0]}</h1><p>Track every package from our China warehouse to Nigeria.</p></div>
+              <button className="client-avatar-button" onClick={() => setTab('more')} aria-label="Open more options">{clientUser.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</button>
+            </section>
 
-            {/* Shipment stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
-              {[
-                { label: 'In Warehouse', value: inWarehouse, color: 'var(--blue)', Icon: Warehouse },
-                { label: 'In Transit', value: inTransit, color: 'var(--amber)', Icon: Ship },
-                { label: 'Delivered', value: delivered, color: 'var(--green)', Icon: CheckCircle2 },
-              ].map((s, i) => (
-                <div key={i} style={{ background: 'var(--white)', borderRadius: 14, border: '1px solid var(--line)', padding: '13px 8px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}><s.Icon size={16} color={s.color} /></div>
-                  <div style={{ fontSize: 21, fontWeight: 700, color: 'var(--t1)', fontFamily: 'Space Grotesk, sans-serif', lineHeight: 1 }}>{s.value}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 3 }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
+            <section className="client-mark-card">
+              <div><span>Your shipping mark</span><strong>{clientUser.shipping_mark}</strong></div>
+              <button onClick={() => setShowLabel(true)}><QrCode size={18} />Label</button>
+            </section>
 
-            {/* Announcements */}
-            <SectionHeader title="Announcements" />
-            {loading ? <SkeletonList n={2} /> : announcements.length === 0 ? (
-              <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 16 }}>No announcements</div>
-            ) : announcements.map(a => (
-              <div key={a.id} className="card" style={{ borderLeft: `4px solid ${a.is_important ? 'var(--danger)' : 'var(--teal)'}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{a.title}</div>
-                  {a.is_important && <span style={{ background: 'var(--danger-bg)', color: 'var(--danger)', fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, flexShrink: 0 }}>Important</span>}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{a.body}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>{fmtAgo(a.created_at)}</div>
-              </div>
-            ))}
+            {loading ? <SkeletonList n={2} /> : currentShipment ? (
+              <section className="shipment-focus-card" onClick={() => setSelectedGoods(currentShipment)}>
+                <div className="shipment-focus-top"><div><span>Current shipment</span><h2>{currentShipment.description}</h2></div><StatusPill status={currentShipment.status} /></div>
+                <div className="shipment-focus-meta"><TypePill type={currentShipment.type} /><span>{currentShipment.quantity || 1} package{(currentShipment.quantity || 1) === 1 ? '' : 's'}</span><span>{currentShipment.weight_kg} kg</span></div>
+                <div className="shipment-progress" aria-label={`Shipment is ${currentShipment.status.replace('_', ' ')}`}><span className="progress-step complete"><i />Warehouse</span><span className={`progress-line ${currentShipment.status !== 'in_warehouse' ? 'complete' : ''}`} /><span className={`progress-step ${currentShipment.status !== 'in_warehouse' ? 'complete' : ''}`}><i />In transit</span><span className={`progress-line ${currentShipment.status === 'delivered' ? 'complete' : ''}`} /><span className={`progress-step ${currentShipment.status === 'delivered' ? 'complete' : ''}`}><i />Delivered</span></div>
+                <div className="shipment-focus-footer"><span>{currentShipment.tracking_no || 'Tracking will be added by the warehouse'}</span><span>View details <ArrowRight size={15} /></span></div>
+              </section>
+            ) : <section className="client-empty-shipment"><Package size={24} /><h2>No shipments yet</h2><p>When your supplier sends goods to our warehouse, they will appear here.</p><button className="btn btn-primary" onClick={() => setShowLabel(true)}>Get your shipping label</button></section>}
+
+            <section className="client-quick-actions"><button onClick={() => setTab('goods')}><Package size={18} /><span>My goods</span><small>{goods.length}</small></button><button onClick={() => setTab('receipts')}><ReceiptText size={18} /><span>Receipts</span><small>{receipts.length}</small></button><button onClick={() => setTab('chat')}><MessageCircle size={18} /><span>Messages</span>{unreadMsgs > 0 && <small>{unreadMsgs}</small>}</button></section>
+
+            <section className="client-summary-grid">
+              {[{ label: 'Warehouse', value: inWarehouse, Icon: Warehouse }, { label: 'In transit', value: inTransit, Icon: Ship }, { label: 'Delivered', value: delivered, Icon: CheckCircle2 }].map(item => <div key={item.label}><item.Icon size={16} /><strong>{item.value}</strong><span>{item.label}</span></div>)}
+            </section>
+
+            <SectionHeader title="Updates" />
+            {announcements.length === 0 ? <div className="client-updates-empty">No updates right now.</div> : announcements.slice(0, 3).map(a => <article key={a.id} className={`client-update ${a.is_important ? 'important' : ''}`}><div><strong>{a.title}</strong><p>{a.body}</p><span>{fmtAgo(a.created_at)}</span></div>{a.is_important && <b>Important</b>}</article>)}
           </>
         )}
 
@@ -217,6 +193,7 @@ export default function ClientApp() {
         {/* LABEL */}
         {tab === 'label' && (
           <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Your Shipping Label</div>
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>Choose how this package will ship, then send this label to your supplier before they ship it to our warehouse.</div>
@@ -235,6 +212,7 @@ export default function ClientApp() {
         {/* SUPPLIERS */}
         {tab === 'suppliers' && (
           <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Supplier Directory" />
             <div className="banner banner-info" style={{ marginBottom: 16 }}>These are trusted suppliers in China. Share your shipping mark with them when ordering.</div>
             {loading ? <SkeletonList /> : suppliers.length === 0 ? <EmptyState icon="store" title="No suppliers listed yet" /> : (

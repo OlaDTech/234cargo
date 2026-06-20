@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, MoreHorizontal } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
-import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
+import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
@@ -36,6 +36,10 @@ export default function AdminApp() {
   const [showEditGoods, setShowEditGoods] = useState(null)
   const [showRecordGoods, setShowRecordGoods] = useState(false)
   const [showExpenseForm, setShowExpenseForm] = useState(null)
+  const [showClientLabel, setShowClientLabel] = useState(null)
+  const [clientScanOpen, setClientScanOpen] = useState(false)
+  const [trackingScanOpen, setTrackingScanOpen] = useState(false)
+  const [trackingScanResult, setTrackingScanResult] = useState(null)
 
   const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
@@ -49,6 +53,7 @@ export default function AdminApp() {
   const [goodsSort, setGoodsSort] = useState('newest')
   const [trackingQuery, setTrackingQuery] = useState('')
   const [clientQuery, setClientQuery] = useState('')
+  const [adminLabelType, setAdminLabelType] = useState('sea')
   const reloadTimer = useRef(null)
 
   useEffect(() => {
@@ -215,6 +220,29 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const searchClientFromScan = value => {
+    const raw = String(value || '').trim()
+    const parts = raw.split(':')
+    const identifier = (parts[0] === '234' || parts[0] === 'OA') && parts[1] ? parts[1] : raw
+    if (parts[2] === 'sea' || parts[2] === 'air') setAdminLabelType(parts[2])
+    setClientQuery(identifier)
+    toast.success('Client label scanned')
+  }
+
+  const identifyTrackingOwner = async value => {
+    const trackingNumber = String(value || '').trim()
+    if (!trackingNumber) return
+    setTrackingQuery(trackingNumber)
+    const { data, error } = await supabase.from('goods').select('*,client:clients(full_name,phone,shipping_mark,state)').eq('tracking_no', trackingNumber).maybeSingle()
+    if (error || !data) {
+      setTrackingScanResult(null)
+      toast.error('No goods record found for this tracking number')
+      return
+    }
+    setTrackingScanResult(data)
+    toast.success(`Package belongs to ${data.client?.full_name || 'this client'}`)
+  }
+
   const exportCsv = (filename, rows) => {
     if (!rows.length) { toast.error('There is no data to export'); return }
     const columns = Object.keys(rows[0])
@@ -356,7 +384,7 @@ export default function AdminApp() {
           <>
             <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<div style={{ display: 'flex', gap: 8 }}><button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, recorded_at: g.created_at })))}><Download size={14} />Export</button><button className="btn btn-sm btn-primary" onClick={() => setShowRecordGoods(true)}>+ Record</button></div>} />
             <div className="card" style={{ padding: 12 }}>
-              <div className="input-scan-row" style={{ marginBottom: 10 }}><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search client, shipping mark, goods or tracking number" value={goodsQuery} onChange={e => setGoodsQuery(e.target.value)} /></div>
+              <div className="search-control" style={{ marginBottom: 10 }}><Search size={18} /><input placeholder="Search client, shipping mark, goods or tracking number" value={goodsQuery} onChange={e => setGoodsQuery(e.target.value)} /></div>
               <div className="filter-row">
                 <select className="input-field" value={goodsTypeFilter} onChange={e => setGoodsTypeFilter(e.target.value)}><option value="all">All shipment types</option><option value="sea">Sea</option><option value="air">Air</option></select>
                 <select className="input-field" value={goodsStatusFilter} onChange={e => setGoodsStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="in_warehouse">In warehouse</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option></select>
@@ -419,7 +447,8 @@ export default function AdminApp() {
         {tab === 'tracking' && (
           <>
             <SectionHeader title="Tracking Number Register" action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-tracking-register', trackedGoods.map(g => ({ tracking_no: g.tracking_no, description: g.description, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, received_at: g.created_at })))}><Download size={14} />Export</button>} />
-            <div className="card" style={{ padding: 12 }}><div className="input-scan-row"><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search tracking number, client, mark or goods" value={trackingQuery} onChange={e => setTrackingQuery(e.target.value)} /></div></div>
+            <div className="search-control"><Search size={18} /><input placeholder="Search tracking number, client, mark or goods" value={trackingQuery} onChange={e => { setTrackingQuery(e.target.value); setTrackingScanResult(null) }} /><button className="search-scan-button" onClick={() => setTrackingScanOpen(true)} title="Scan tracking number" aria-label="Scan tracking number"><Barcode size={18} /></button></div>
+            {trackingScanResult && <section className="tracking-owner-card"><div className="tracking-owner-heading"><span>Package owner identified</span><button onClick={() => setTrackingScanResult(null)}>Clear</button></div><div className="tracking-owner-name">{trackingScanResult.client?.full_name}</div><div className="tracking-owner-mark">{trackingScanResult.client?.shipping_mark}</div><div className="tracking-owner-grid"><div><span>Tracking</span><strong>{trackingScanResult.tracking_no}</strong></div><div><span>Shipment</span><strong>{trackingScanResult.type === 'air' ? 'Air freight' : 'Sea freight'}</strong></div><div><span>Package</span><strong>{trackingScanResult.description}</strong></div><div><span>Status</span><StatusPill status={trackingScanResult.status} /></div></div></section>}
             {trackedGoods.length === 0 ? <EmptyState icon="box" title="No matching tracking numbers" text="Tracking numbers recorded by staff will appear here." /> : trackedGoods.map(g => (
               <div key={g.id} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><div><div style={{ color: 'var(--teal-d)', fontWeight: 800, fontSize: 16 }}>{g.tracking_no}</div><div style={{ fontWeight: 700, marginTop: 4 }}>{g.description}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{g.client?.full_name} · {g.client?.shipping_mark}</div></div><div style={{ textAlign: 'right' }}><TypePill type={g.type} /><div style={{ marginTop: 7 }}><StatusPill status={g.status} /></div></div></div>
@@ -431,10 +460,11 @@ export default function AdminApp() {
 
         {tab === 'clients' && (
           <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title={`Clients (${filteredClients.length})`} action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-clients', filteredClients.map(client => ({ full_name: client.full_name, phone: client.phone, state: client.state, country: client.country, shipping_mark: client.shipping_mark, notes: client.notes, registered_at: client.created_at })))}><Download size={14} />Export Excel</button>} />
-            <div className="card" style={{ padding: 12 }}><div className="input-scan-row"><Search size={18} color="var(--t3)" /><input className="input-field" style={{ margin: 0 }} placeholder="Search name, phone, state or shipping mark" value={clientQuery} onChange={e => setClientQuery(e.target.value)} /></div></div>
+            <div className="search-control"><Search size={18} /><input placeholder="Search name, phone, state or shipping mark" value={clientQuery} onChange={e => setClientQuery(e.target.value)} /><button className="search-scan-button" onClick={() => setClientScanOpen(true)} title="Scan client shipping label" aria-label="Scan client shipping label"><Barcode size={18} /></button></div>
             {filteredClients.length === 0 ? <EmptyState icon="users" title="No matching clients" /> : filteredClients.map(client => (
-              <div key={client.id} className="card"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontWeight: 800 }}>{client.full_name}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{client.phone} · {client.state || 'Nigeria'}</div><div style={{ color: 'var(--teal-d)', fontSize: 13, fontWeight: 800, marginTop: 4 }}>{client.shipping_mark}</div></div><div style={{ color: 'var(--muted)', fontSize: 12 }}>{fmtDate(client.created_at)}</div></div></div>
+              <div key={client.id} className="card"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontWeight: 800 }}>{client.full_name}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{client.phone} · {client.state || 'Nigeria'}</div><div style={{ color: 'var(--teal-d)', fontSize: 13, fontWeight: 800, marginTop: 4 }}>{client.shipping_mark}</div></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}><div style={{ color: 'var(--muted)', fontSize: 12 }}>{fmtDate(client.created_at)}</div><button className="btn btn-xs btn-secondary" onClick={() => setShowClientLabel(client)}><QrCode size={13} />Label</button></div></div></div>
             ))}
           </>
         )}
@@ -458,6 +488,7 @@ export default function AdminApp() {
         {/* CONTAINERS */}
         {tab === 'containers' && (
           <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Containers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddCont(true)}>+ New</button>} />
             {loading ? <SkeletonList /> : containers.map(c => {
               const cGoods = goods.filter(g => g.container_id === c.id)
@@ -511,6 +542,7 @@ export default function AdminApp() {
         {/* MESSAGES */}
         {tab === 'messages' && (
           <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Client Messages" />
             {clientThreads.length === 0 ? <EmptyState icon="chat" title="No messages yet" /> : clientThreads.map(c => (
               <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowMsgThread(c)}>
@@ -602,6 +634,7 @@ export default function AdminApp() {
         {/* SETTINGS */}
         {tab === 'settings' && (
           <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="System Settings" action={<span style={{ fontSize: 11, color: 'var(--muted)' }}>Admin only</span>} />
             <div className="banner banner-warn" style={{ marginBottom: 16 }}>Changes here update all shipping labels immediately.</div>
 
@@ -689,6 +722,15 @@ export default function AdminApp() {
       </Modal>
 
       {/* Goods edit */}
+      <ScannerModal open={clientScanOpen} onClose={() => setClientScanOpen(false)} onResult={searchClientFromScan} title="Scan Client Shipping Label" />
+      <ScannerModal open={trackingScanOpen} onClose={() => setTrackingScanOpen(false)} onResult={identifyTrackingOwner} title="Scan Tracking Number to Identify Owner" />
+
+      <Modal open={!!showClientLabel} title="Client Shipping Label" onClose={() => setShowClientLabel(null)}>
+        <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
+        <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
+        <button className="btn btn-navy btn-full" onClick={() => window.print()} style={{ marginTop: 14 }}><Download size={16} />Download / Print Label</button>
+      </Modal>
+
       <Modal open={showRecordGoods} title="Record New Goods" onClose={() => setShowRecordGoods(false)}>
         <RecordGoods onDone={() => { setShowRecordGoods(false); loadAll() }} />
       </Modal>
