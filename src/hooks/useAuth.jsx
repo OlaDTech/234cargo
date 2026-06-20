@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase, getCurrentProfile } from '../lib/supabase'
 
 const AuthContext = createContext(null)
@@ -31,6 +31,14 @@ export function AuthProvider({ children }) {
     setProfile(p)
     return p
   }
+
+  const refreshStaffProfile = useCallback(async () => {
+    const authUser = user || (await supabase.auth.getUser()).data.user
+    if (!authUser) return null
+    const nextProfile = await getCurrentProfile(authUser.id)
+    if (nextProfile) setProfile(nextProfile)
+    return nextProfile
+  }, [user])
 
   useEffect(() => {
     // Restore client session from localStorage
@@ -66,6 +74,17 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!user?.id) return undefined
+    const channel = supabase.channel(`profile-live-${user.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, payload => {
+        setProfile(current => current ? { ...current, ...payload.new } : payload.new)
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [user?.id])
+
   const signInStaff = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
@@ -98,7 +117,7 @@ export function AuthProvider({ children }) {
       user, profile, clientUser,
       loading, isAdmin, isStaff, isClient,
       hasPermission,
-      signInStaff, signInClient, signOut,
+      signInStaff, signInClient, signOut, refreshStaffProfile,
       activeRole: clientUser ? 'client' : (profile?.role || null)
     }}>
       {children}

@@ -235,8 +235,10 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .chat-bubble { padding: 11px 15px; font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .bubble-client { background: var(--teal); color: #fff; border-radius: 14px 14px 4px 14px; }
 .bubble-admin { background: var(--white); color: var(--t1); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; }
-.chat-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.chat-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .chat-send { padding: 11px 16px; min-width: 68px; }
+.chat-paste { width: 42px; border: 1px solid var(--line2); border-radius: var(--radius-md); background: #fff; color: var(--t2); cursor: pointer; display: grid; place-items: center; }.chat-paste:hover { color: var(--teal-d); border-color: var(--teal); }
+.message-actions { display: flex; align-items: center; gap: 3px; margin-top: 4px; }.message-actions-out { justify-content: flex-end; }.message-actions button { width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--t3); background: transparent; cursor: pointer; }.message-actions button:hover { background: var(--surface2); color: var(--t1); }.message-actions .message-delete:hover { color: var(--red); background: var(--red-bg); }
 
 .fab { position: fixed; bottom: 84px; right: calc(50% - 220px); width: 52px; height: 52px; border-radius: 50%; background: var(--teal); color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(14,159,142,0.35); z-index: 90; }
 .fab:active { transform: scale(0.94); }

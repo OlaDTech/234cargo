@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
@@ -21,6 +21,7 @@ export default function ClientApp() {
   const [showLabel, setShowLabel] = useState(false)
   const [labelShipmentType, setLabelShipmentType] = useState('sea')
   const reloadTimer = useRef(null)
+  const chatListRef = useRef(null)
 
   useEffect(() => { loadAll() }, [clientUser.id])
 
@@ -45,6 +46,12 @@ export default function ClientApp() {
     }
   }, [clientUser.id])
 
+  useEffect(() => {
+    if (tab !== 'chat' || !chatListRef.current) return
+    const frame = requestAnimationFrame(() => { chatListRef.current.scrollTop = chatListRef.current.scrollHeight })
+    return () => cancelAnimationFrame(frame)
+  }, [messages, tab])
+
   const loadAll = async (showLoader = true) => {
     if (showLoader) setLoading(true)
     const [{ data: g }, { data: a }, { data: s }, { data: m }, { data: r }, { data: cfg }] = await Promise.all([
@@ -66,6 +73,16 @@ export default function ClientApp() {
     const { data, error } = await supabase.from('messages').insert({ client_id: clientUser.id, sender: 'client', message: msgText.trim() }).select().single()
     if (!error) { setMessages(prev => [...prev, data]); setMsgText('') }
     else toast.error('Failed to send message')
+  }
+
+  const copyMessage = async text => {
+    try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
+    catch { toast.error('Could not copy this message') }
+  }
+
+  const pasteMessage = async () => {
+    try { setMsgText(await navigator.clipboard.readText()) }
+    catch { toast.error('Allow clipboard access to paste') }
   }
 
   const tabs = [
@@ -233,7 +250,7 @@ export default function ClientApp() {
         {tab === 'chat' && (
           <div className="chat-layout">
             <SectionHeader title="Messages" />
-            <div className="chat-list">
+            <div ref={chatListRef} className="chat-list">
               {loading ? <SkeletonList n={3} /> : messages.length === 0 ? (
                 <EmptyState icon="chat" title="No messages yet" text="Send us a message and our team will get back to you." />
               ) : messages.map(m => (
@@ -245,6 +262,7 @@ export default function ClientApp() {
                     <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
                       {m.message}
                     </div>
+                    <div className={`message-actions ${m.sender === 'client' ? 'message-actions-out' : ''}`}><button onClick={() => copyMessage(m.message)} title="Copy message" aria-label="Copy message"><Copy size={13} /></button></div>
                   </div>
                 </div>
               ))}
@@ -252,6 +270,7 @@ export default function ClientApp() {
             <div className="chat-composer">
               <input className="input-field" style={{ margin: 0 }} placeholder="Type a message…" value={msgText}
                 onChange={e => setMsgText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMsg()} />
+              <button className="chat-paste" onClick={pasteMessage} title="Paste message" aria-label="Paste message"><Clipboard size={17} /></button>
               <button className="btn btn-primary chat-send" onClick={sendMsg}>Send</button>
             </div>
           </div>

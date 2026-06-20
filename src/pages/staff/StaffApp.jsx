@@ -1,19 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, ScanLine, LogOut, Boxes, CalendarDays, CheckCircle2, Ship } from 'lucide-react'
+import { LayoutDashboard, Users, Package, ScanLine, LogOut, Boxes, CalendarDays, CheckCircle2, Ship, MessageCircle, Wallet, Copy, Clipboard, Trash2 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
-import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, PhotoGallery, fmtDate, fmtDateTime, ScannerModal } from '../../components/UI'
+import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, ScannerModal, formatMoney } from '../../components/UI'
 import RecordGoods from './RecordGoods'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 
 export default function StaffApp() {
-  const { profile, signOut, hasPermission } = useAuth()
+  const { profile, signOut, hasPermission, refreshStaffProfile } = useAuth()
   const [tab, setTab] = useState('dashboard')
   const [stats, setStats] = useState(null)
   const [clients, setClients] = useState([])
   const [goods, setGoods] = useState([])
+  const [messages, setMessages] = useState([])
+  const [receipts, setReceipts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showRecord, setShowRecord] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
@@ -21,8 +23,11 @@ export default function StaffApp() {
   const [scanOpen, setScanOpen] = useState(false)
   const [scanResult, setScanResult] = useState(null)
   const [showAddClient, setShowAddClient] = useState(false)
+  const [showMsgThread, setShowMsgThread] = useState(null)
+  const [replyText, setReplyText] = useState('')
   const [newClient, setNewClient] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '' })
   const reloadTimer = useRef(null)
+  const messageListRef = useRef(null)
 
   useEffect(() => {
     loadAll()
@@ -37,6 +42,8 @@ export default function StaffApp() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts' }, scheduleReload)
       .subscribe()
 
     return () => {
@@ -45,15 +52,35 @@ export default function StaffApp() {
     }
   }, [])
 
+  useEffect(() => {
+    const syncPermissions = () => refreshStaffProfile()
+    syncPermissions()
+    window.addEventListener('focus', syncPermissions)
+    const interval = setInterval(syncPermissions, 8000)
+    return () => { window.removeEventListener('focus', syncPermissions); clearInterval(interval) }
+  }, [])
+
+  useEffect(() => {
+    if (!showMsgThread || !messageListRef.current) return
+    const frame = requestAnimationFrame(() => {
+      messageListRef.current.scrollTop = messageListRef.current.scrollHeight
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [messages, showMsgThread])
+
   const loadAll = async (showLoader = true) => {
     if (showLoader) setLoading(true)
-    const [{ data: s }, { data: g }, { data: cfg }] = await Promise.all([
+    const [{ data: s }, { data: g }, { data: cfg }, { data: msg }, { data: rec }] = await Promise.all([
       supabase.from('clients').select('id,full_name,phone,shipping_mark,country,state,created_at').order('created_at', { ascending: false }),
       supabase.from('goods').select('*,client:clients(full_name,shipping_mark)').order('created_at', { ascending: false }),
       supabase.from('settings').select('key,value'),
+      supabase.from('messages').select('*').order('created_at'),
+      supabase.from('receipts').select('*,client:clients(full_name,shipping_mark)').order('issued_at', { ascending: false }),
     ])
     setClients(s || [])
     setGoods(g || [])
+    setMessages(msg || [])
+    setReceipts(rec || [])
     if (cfg) setSettings(Object.fromEntries(cfg.map(r => [r.key, r.value])))
 
     // compute stats
@@ -96,20 +123,58 @@ export default function StaffApp() {
     } catch (e) { toast.error(e.message) }
   }
 
+  const sendReply = async () => {
+    if (!replyText.trim() || !showMsgThread) return
+    const { data, error } = await supabase.from('messages').insert({ client_id: showMsgThread.id, sender: 'staff', message: replyText.trim() }).select().single()
+    if (error) { toast.error(error.message); return }
+    if (data) setMessages(current => [...current, data])
+    setReplyText('')
+    loadAll(false)
+  }
+
+  const copyMessage = async text => {
+    try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
+    catch { toast.error('Could not copy this message') }
+  }
+
+  const pasteReply = async () => {
+    try { setReplyText(await navigator.clipboard.readText()) }
+    catch { toast.error('Allow clipboard access to paste') }
+  }
+
+  const deleteMessage = async id => {
+    if (!window.confirm('Delete this message?')) return
+    const { error } = await supabase.from('messages').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    setMessages(current => current.filter(message => message.id !== id))
+    toast.success('Message deleted')
+  }
+
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
     { id: 'clients', label: 'Clients', Icon: Users },
     { id: 'goods', label: 'Goods', Icon: Package },
     { id: 'scan', label: 'Scan', Icon: ScanLine },
+    { id: 'messages', label: 'Messages', Icon: MessageCircle },
+    { id: 'finance', label: 'Finance', Icon: Wallet },
   ].filter(item => hasPermission(item.id))
 
   useEffect(() => {
     if (tabs.length && !tabs.some(item => item.id === tab)) setTab(tabs[0].id)
   }, [profile, tab])
 
+  const clientThreads = clients.map(client => ({
+    ...client,
+    messages: messages.filter(message => message.client_id === client.id),
+  })).filter(client => client.messages.length > 0).sort((a, b) => {
+    const latestA = a.messages[a.messages.length - 1]
+    const latestB = b.messages[b.messages.length - 1]
+    return new Date(latestB?.created_at) - new Date(latestA?.created_at)
+  })
+
   return (
     <div className="app-shell">
-      <TopNav role="Staff" title={tab === 'dashboard' ? 'Dashboard' : tab === 'clients' ? 'Clients' : tab === 'goods' ? 'Goods Records' : 'Quick Scan'}
+      <TopNav role="Staff" title={tab === 'dashboard' ? 'Dashboard' : tab === 'clients' ? 'Clients' : tab === 'goods' ? 'Goods Records' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'Quick Scan'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--teal)', color: 'var(--navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>
@@ -239,6 +304,27 @@ export default function StaffApp() {
           </>
         )}
 
+        {tab === 'messages' && (
+          <>
+            <SectionHeader title="Client Messages" />
+            {clientThreads.length === 0 ? <EmptyState icon="chat" title="No messages yet" /> : clientThreads.map(client => {
+              const lastMessage = client.messages[client.messages.length - 1]
+              return <button key={client.id} className="more-menu-item" onClick={() => setShowMsgThread(client)}><span className="more-menu-icon"><MessageCircle size={21} /></span><span><strong>{client.full_name}</strong><small>{lastMessage?.message}</small></span><span className="more-menu-arrow">›</span></button>
+            })}
+          </>
+        )}
+
+        {tab === 'finance' && (
+          <>
+            <SectionHeader title="Receipt Overview" />
+            <div className="stat-grid">
+              <div className="stat-card"><div className="stat-value">{receipts.length}</div><div className="stat-label">Receipts</div></div>
+              <div className="stat-card"><div className="stat-value">{receipts.filter(r => r.status === 'unpaid').length}</div><div className="stat-label">Unpaid</div></div>
+            </div>
+            {receipts.length === 0 ? <EmptyState icon="receipt" title="No receipts yet" /> : receipts.map(receipt => <div key={receipt.id} className="card"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontWeight: 800 }}>{receipt.receipt_no}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{receipt.client?.full_name} · {receipt.client?.shipping_mark}</div></div><div style={{ textAlign: 'right' }}><div style={{ fontWeight: 800, color: receipt.status === 'paid' ? 'var(--green)' : 'var(--amber)' }}>{formatMoney(receipt.total, receipt.currency || 'NGN')}</div><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>{receipt.status}</div></div></div></div>)}
+          </>
+        )}
+
         {/* SCAN TAB */}
         {tab === 'scan' && (
           <>
@@ -308,6 +394,35 @@ export default function StaffApp() {
                 </div>
               ))}
               {goods.filter(g => g.client_id === selectedClient.id).length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 16 }}>No goods recorded for this client yet.</div>}
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal open={!!showMsgThread} title={'Chat - ' + showMsgThread?.full_name} onClose={() => { setShowMsgThread(null); setReplyText('') }}>
+        {showMsgThread && (
+          <>
+            <div ref={messageListRef} className="chat-list modal-chat-list">
+              {messages.filter(message => message.client_id === showMsgThread.id).map(message => (
+                <div key={message.id} className={`chat-row ${message.sender === 'client' ? 'chat-row-in' : 'chat-row-out'}`}>
+                  <div className="chat-message">
+                    <div className={`chat-meta ${message.sender === 'client' ? '' : 'chat-meta-out'}`}>
+                      {message.sender === 'client' ? showMsgThread.full_name : 'You (Staff)'}
+                    </div>
+                    <div className={`chat-bubble ${message.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>{message.message}</div>
+                    <div className={`message-actions ${message.sender === 'client' ? '' : 'message-actions-out'}`}>
+                      <button onClick={() => copyMessage(message.message)} title="Copy message" aria-label="Copy message"><Copy size={13} /></button>
+                      <button className="message-delete" onClick={() => deleteMessage(message.id)} title="Delete message" aria-label="Delete message"><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="chat-composer">
+              <input className="input-field" style={{ margin: 0 }} placeholder="Type a reply..." value={replyText}
+                onChange={event => setReplyText(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendReply()} />
+              <button className="chat-paste" onClick={pasteReply} title="Paste message" aria-label="Paste message"><Clipboard size={17} /></button>
+              <button className="btn btn-primary chat-send" onClick={sendReply}>Send</button>
             </div>
           </>
         )}

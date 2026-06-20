@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -55,6 +55,7 @@ export default function AdminApp() {
   const [clientQuery, setClientQuery] = useState('')
   const [adminLabelType, setAdminLabelType] = useState('sea')
   const reloadTimer = useRef(null)
+  const messageListRef = useRef(null)
 
   useEffect(() => {
     loadAll()
@@ -82,6 +83,12 @@ export default function AdminApp() {
       supabase.removeChannel(channel)
     }
   }, [])
+
+  useEffect(() => {
+    if (!showMsgThread || !messageListRef.current) return
+    const frame = requestAnimationFrame(() => { messageListRef.current.scrollTop = messageListRef.current.scrollHeight })
+    return () => cancelAnimationFrame(frame)
+  }, [messages, showMsgThread])
 
   const loadAll = async (showLoader = true, syncForms = true) => {
     if (showLoader) setLoading(true)
@@ -150,6 +157,24 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const copyMessage = async text => {
+    try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
+    catch { toast.error('Could not copy this message') }
+  }
+
+  const pasteReply = async () => {
+    try { setReplyText(await navigator.clipboard.readText()) }
+    catch { toast.error('Allow clipboard access to paste') }
+  }
+
+  const deleteMessage = async id => {
+    if (!window.confirm('Delete this message?')) return
+    const { error } = await supabase.from('messages').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    toast.success('Message deleted')
+    loadAll()
+  }
+
   const updateContainerStatus = async (id, status) => {
     await supabase.from('containers').update({ status }).eq('id', id)
     // If delivered, update all goods in this container
@@ -162,7 +187,9 @@ export default function AdminApp() {
 
   const togglePermission = async (staffId, perm, current) => {
     const updated = current.includes(perm) ? current.filter(p => p !== perm) : [...current, perm]
-    await supabase.from('profiles').update({ permissions: updated }).eq('id', staffId)
+    const { error } = await supabase.from('profiles').update({ permissions: updated }).eq('id', staffId)
+    if (error) { toast.error(error.message); return }
+    toast.success(`Staff ${perm} access updated`)
     loadAll()
   }
 
@@ -290,6 +317,8 @@ export default function AdminApp() {
     const term = clientQuery.trim().toLowerCase()
     return !term || [client.full_name, client.phone, client.shipping_mark, client.state].some(value => String(value || '').toLowerCase().includes(term))
   })
+  const totalCbmDisplay = Number.parseFloat(stats.totalCbm)
+  const safeTotalCbm = Number.isFinite(totalCbmDisplay) ? totalCbmDisplay.toFixed(2) : '0.00'
 
   return (
     <div className="app-shell">
@@ -315,7 +344,7 @@ export default function AdminApp() {
               {[
                 { label: 'Total Clients', value: stats.clients, Icon: Users, color: 'var(--blue)' },
                 { label: 'Total Goods', value: stats.goods, Icon: Package, color: 'var(--teal)' },
-                { label: 'Total CBM', value: `${stats.totalCbm ?? '0.00'} m³`, Icon: Boxes, color: 'var(--amber)' },
+                { label: 'Total CBM', value: safeTotalCbm, Icon: Boxes, color: 'var(--amber)' },
                 { label: 'In Transit', value: stats.inTransit, Icon: Ship, color: 'var(--amber)' },
                 { label: 'Delivered', value: stats.delivered, Icon: CheckCircle2, color: 'var(--green)' },
                 { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
@@ -861,7 +890,7 @@ export default function AdminApp() {
       <Modal open={!!showMsgThread} title={'Chat — ' + showMsgThread?.full_name} onClose={() => { setShowMsgThread(null); setReplyText('') }}>
         {showMsgThread && (
           <>
-            <div className="chat-list modal-chat-list">
+            <div ref={messageListRef} className="chat-list modal-chat-list">
               {messages.filter(m => m.client_id === showMsgThread.id).map(m => (
                 <div key={m.id} className={`chat-row ${m.sender === 'client' ? 'chat-row-in' : 'chat-row-out'}`}>
                   <div className="chat-message">
@@ -871,6 +900,7 @@ export default function AdminApp() {
                     <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
                       {m.message}
                     </div>
+                    <div className={`message-actions ${m.sender === 'client' ? '' : 'message-actions-out'}`}><button onClick={() => copyMessage(m.message)} title="Copy message" aria-label="Copy message"><Copy size={13} /></button><button className="message-delete" onClick={() => deleteMessage(m.id)} title="Delete message" aria-label="Delete message"><Trash2 size={13} /></button></div>
                   </div>
                 </div>
               ))}
@@ -878,6 +908,7 @@ export default function AdminApp() {
             <div className="chat-composer">
               <input className="input-field" style={{ margin: 0 }} placeholder="Type a reply…" value={replyText}
                 onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()} />
+              <button className="chat-paste" onClick={pasteReply} title="Paste message" aria-label="Paste message"><Clipboard size={17} /></button>
               <button className="btn btn-primary chat-send" onClick={sendReply}>Send</button>
             </div>
           </>
