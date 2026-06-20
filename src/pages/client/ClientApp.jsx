@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
@@ -15,6 +15,7 @@ export default function ClientApp() {
   const [receipts, setReceipts] = useState([])
   const [settings, setSettings] = useState({})
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [msgText, setMsgText] = useState('')
   const [selectedGoods, setSelectedGoods] = useState(null)
   const [selectedReceipt, setSelectedReceipt] = useState(null)
@@ -75,6 +76,13 @@ export default function ClientApp() {
     else toast.error('Failed to send message')
   }
 
+  const refreshData = async () => {
+    setRefreshing(true)
+    await loadAll(false)
+    setRefreshing(false)
+    toast.success('Data refreshed')
+  }
+
   const copyMessage = async text => {
     try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
     catch { toast.error('Could not copy this message') }
@@ -109,6 +117,7 @@ export default function ClientApp() {
             <div className="client-header-avatar">
               {clientUser.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
             </div>
+            <button className="client-refresh" onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data"><RefreshCw size={17} style={{ opacity: refreshing ? 0.55 : 1 }} /></button>
             <button className="client-logout" onClick={signOut} title="Log out" aria-label="Log out"><LogOut size={18} /></button>
           </div>
         }

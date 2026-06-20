@@ -3,6 +3,8 @@ export const PERMISSIONS = [
   'clients',
   'goods',
   'scan',
+  'containers',
+  'receipts',
   'finance',
   'messages',
 ]
@@ -15,8 +17,8 @@ export const ROLE_OPTIONS = [
 
 export const DEFAULT_PERMISSIONS_BY_ROLE = {
   admin: PERMISSIONS,
-  staff: ['dashboard', 'clients', 'goods', 'scan', 'finance', 'messages'],
-  warehouse_manager: ['dashboard', 'goods', 'scan'],
+  staff: ['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages'],
+  warehouse_manager: ['dashboard', 'goods', 'scan', 'containers'],
 }
 
 export function roleLabel(role) {

@@ -69,6 +69,43 @@ alter table profiles drop constraint if exists profiles_role_check;
 alter table profiles add constraint profiles_role_check
   check (role in ('admin', 'staff', 'warehouse_manager'));
 
+-- Every Supabase Auth team account needs a matching profile before it can
+-- use the staff workspace. New accounts start as Staff with dashboard access;
+-- an admin can then assign the correct role and permissions in the app.
+create or replace function public.create_profile_for_auth_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, full_name, phone, role, permissions)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'full_name', split_part(coalesce(new.email, 'team-member'), '@', 1)),
+    new.phone,
+    'staff',
+    array['dashboard']
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists auth_user_profile_created on auth.users;
+create trigger auth_user_profile_created
+  after insert on auth.users
+  for each row execute function public.create_profile_for_auth_user();
+
+-- Creates profiles for any Auth accounts that existed before this trigger.
+insert into profiles (id, full_name, phone, role, permissions)
+select
+  auth_user.id,
+  coalesce(auth_user.raw_user_meta_data ->> 'full_name', split_part(coalesce(auth_user.email, 'team-member'), '@', 1)),
+  auth_user.phone,
+  'staff',
+  array['dashboard']
+from auth.users as auth_user
+left join profiles on profiles.id = auth_user.id
+where profiles.id is null
+on conflict (id) do nothing;
+
 -- ── CLIENTS ───────────────────────────────────────────────
 create table if not exists clients (
   id uuid primary key default uuid_generate_v4(),
@@ -344,22 +381,28 @@ create policy "goods_public_read" on goods for select using (true);
 -- CONTAINERS: staff & admin
 drop policy if exists "containers_all" on containers;
 create policy "containers_all" on containers for all
-  using (has_permission('goods') or has_permission('scan'))
-  with check (has_permission('goods') or has_permission('scan'));
+  using (has_permission('goods') or has_permission('scan') or has_permission('containers'))
+  with check (has_permission('goods') or has_permission('scan') or has_permission('containers'));
 
--- RECEIPTS: admin manages; staff reads; clients read their own (filtered client-side)
+-- RECEIPTS: receipt or finance permission can manage receipts; clients read their own (filtered client-side)
 drop policy if exists "receipts_staff_admin_read" on receipts;
-create policy "receipts_staff_admin_read" on receipts for select using (has_permission('finance'));
+create policy "receipts_staff_admin_read" on receipts for select
+  using (has_permission('receipts') or has_permission('finance'));
 drop policy if exists "receipts_public_read" on receipts;
 create policy "receipts_public_read" on receipts for select using (true);
 drop policy if exists "receipts_write" on receipts;
-create policy "receipts_write" on receipts for insert with check (get_my_role() = 'admin');
+create policy "receipts_write" on receipts for insert
+  with check (has_permission('receipts') or has_permission('finance'));
 drop policy if exists "receipts_update" on receipts;
-create policy "receipts_update" on receipts for update using (get_my_role() = 'admin');
+create policy "receipts_update" on receipts for update
+  using (has_permission('receipts') or has_permission('finance'))
+  with check (has_permission('receipts') or has_permission('finance'));
 
--- EXPENSES: admin only
+-- EXPENSES: the finance permission can view and manage expense records.
 drop policy if exists "expenses_admin_all" on expenses;
-create policy "expenses_admin_all" on expenses for all using (get_my_role() = 'admin') with check (get_my_role() = 'admin');
+create policy "expenses_admin_all" on expenses for all
+  using (has_permission('finance'))
+  with check (has_permission('finance'));
 
 -- ANNOUNCEMENTS: public read (client portal dashboard); admin writes
 drop policy if exists "ann_read" on announcements;

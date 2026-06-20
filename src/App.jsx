@@ -2,7 +2,6 @@ import { Component } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
-import StaffApp from './pages/staff/StaffApp'
 import AdminApp from './pages/admin/AdminApp'
 import ClientApp from './pages/client/ClientApp'
 
@@ -48,8 +47,7 @@ function Gate() {
   }
 
   if (!activeRole) return <LoginPage />
-  if (activeRole === 'admin') return <AdminApp />
-  if (activeRole === 'staff' || activeRole === 'warehouse_manager') return <StaffApp />
+  if (['admin', 'staff', 'warehouse_manager'].includes(activeRole)) return <AdminApp />
   if (activeRole === 'client') return <ClientApp />
   return <LoginPage />
 }

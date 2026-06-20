@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -9,7 +9,7 @@ import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 
 export default function AdminApp() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, isAdmin, hasPermission } = useAuth()
   const [tab, setTab] = useState('dashboard')
   const [stats, setStats] = useState({ totalCbm: '0.00' })
   const [clients, setClients] = useState([])
@@ -23,11 +23,13 @@ export default function AdminApp() {
   const [settings, setSettings] = useState({})
   const [staffList, setStaffList] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   // Modal states
   const [showContainerDetail, setShowContainerDetail] = useState(null)
   const [showReceiptGen, setShowReceiptGen] = useState(null)
   const [showReceiptView, setShowReceiptView] = useState(null)
+  const [showReceiptEdit, setShowReceiptEdit] = useState(null)
   const [showMsgThread, setShowMsgThread] = useState(null)
   const [replyText, setReplyText] = useState('')
   const [showAddAnn, setShowAddAnn] = useState(false)
@@ -46,6 +48,7 @@ export default function AdminApp() {
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou → Port Klang', status: 'loading', departure_date: '', arrival_date: '' })
   const [receiptForm, setReceiptForm] = useState({ discount: 0 })
+  const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
   const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
   const [goodsQuery, setGoodsQuery] = useState('')
@@ -119,6 +122,7 @@ export default function AdminApp() {
     setStats({ clients: c.length, goods: g.length, totalCbm: totalCbm.toFixed(2), inTransit: g.filter(x=>x.status==='in_transit').length, delivered: g.filter(x=>x.status==='delivered').length, receipts: rec.length, containers: cont.length, messages: msg.filter(m=>m.sender==='client').length, paidIncome, totalExpenses, netBalance: paidIncome - totalExpenses })
     setShowContainerDetail(prev => prev ? (cont.find(x => x.id === prev.id) || prev) : prev)
     setShowReceiptView(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
+    setShowReceiptEdit(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
     setShowMsgThread(prev => prev ? (c.find(x => x.id === prev.id) || prev) : prev)
     if (showLoader) setLoading(false)
   }
@@ -149,6 +153,41 @@ export default function AdminApp() {
     if (error) { toast.error(error.message); return }
     toast.success('Receipt ' + recNo + ' generated!')
     setShowReceiptGen(null); setReceiptForm({ discount: 0 }); loadAll()
+  }
+
+  const refreshData = async () => {
+    setRefreshing(true)
+    await loadAll(false)
+    setRefreshing(false)
+    toast.success('Data refreshed')
+  }
+
+  const openReceiptEdit = receipt => {
+    setShowReceiptEdit(receipt)
+    setReceiptEditForm({
+      subtotal: String(receipt.subtotal ?? 0),
+      discount: String(receipt.discount ?? 0),
+      status: receipt.status || 'unpaid',
+    })
+  }
+
+  const saveReceiptEdit = async () => {
+    if (!showReceiptEdit) return
+    const subtotal = Math.max(0, parseFloat(receiptEditForm.subtotal) || 0)
+    const discount = Math.max(0, parseFloat(receiptEditForm.discount) || 0)
+    const status = receiptEditForm.status === 'paid' ? 'paid' : 'unpaid'
+    const { error } = await supabase.from('receipts').update({
+      subtotal,
+      discount,
+      total: Math.max(0, subtotal - discount),
+      status,
+      paid_at: status === 'paid' ? (showReceiptEdit.paid_at || new Date().toISOString()) : null,
+    }).eq('id', showReceiptEdit.id)
+    if (error) { toast.error(error.message); return }
+    toast.success('Receipt updated')
+    setShowReceiptEdit(null)
+    setShowReceiptView(null)
+    loadAll()
   }
 
   const sendReply = async () => {
@@ -297,13 +336,17 @@ export default function AdminApp() {
   }
 
   const tabs = [
-    { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
-    { id: 'goods', label: 'Goods', Icon: Package },
-    { id: 'tracking', label: 'Track', Icon: Barcode },
-    { id: 'finance', label: 'Finance', Icon: Wallet },
-    { id: 'more', label: 'More', Icon: MoreHorizontal },
-  ]
+    hasPermission('dashboard') && { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
+    hasPermission('goods') && { id: 'goods', label: 'Goods', Icon: Package },
+    hasPermission('scan') && { id: 'tracking', label: 'Track', Icon: Barcode },
+    (hasPermission('finance') || hasPermission('receipts')) && { id: 'finance', label: hasPermission('finance') ? 'Finance' : 'Receipts', Icon: Wallet },
+    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
+  ].filter(Boolean)
   const activeNav = ['clients', 'containers', 'messages', 'settings'].includes(tab) ? 'more' : tab
+
+  useEffect(() => {
+    if (tabs.length && !tabs.some(item => item.id === tab)) setTab(tabs[0].id)
+  }, [tab, profile?.role, profile?.permissions?.join(',')])
 
   // Group messages by client
   const clientThreads = clients.map(c => ({
@@ -334,21 +377,38 @@ export default function AdminApp() {
   })
   const totalCbmDisplay = Number.parseFloat(stats.totalCbm)
   const safeTotalCbm = Number.isFinite(totalCbmDisplay) ? totalCbmDisplay.toFixed(2) : '0.00'
+  const dashboardStats = [
+    (isAdmin || hasPermission('clients')) && { label: 'Total Clients', value: stats.clients, Icon: Users, color: 'var(--blue)' },
+    (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'Total Goods', value: stats.goods, Icon: Package, color: 'var(--teal)' },
+    (isAdmin || hasPermission('goods') || hasPermission('containers')) && { label: 'Total CBM', value: safeTotalCbm, Icon: Boxes, color: 'var(--amber)' },
+    (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'In Transit', value: stats.inTransit, Icon: Ship, color: 'var(--amber)' },
+    (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'Delivered', value: stats.delivered, Icon: CheckCircle2, color: 'var(--green)' },
+    (isAdmin || hasPermission('finance') || hasPermission('receipts')) && { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
+    (isAdmin || hasPermission('containers')) && { label: 'Containers', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
+    (isAdmin || hasPermission('messages')) && { label: 'Messages', value: stats.messages, Icon: MessageCircle, color: 'var(--red)' },
+    (isAdmin || hasPermission('finance')) && { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
+    (isAdmin || hasPermission('finance')) && { label: 'Expenses', value: formatMoney(stats.totalExpenses), Icon: FileText, color: 'var(--red)' },
+  ].filter(Boolean)
 
   return (
     <div className="app-shell">
-      <TopNav role="Admin" title={tab === 'dashboard' ? 'Admin Overview' : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? 'Finance' : 'System Settings'}
+      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
-          <button onClick={signOut} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12 }}>
-            <LogOut size={14} style={{ display: 'inline', marginRight: 4 }} />Logout
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data" style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, cursor: refreshing ? 'wait' : 'pointer' }}>
+              <RefreshCw size={16} style={{ opacity: refreshing ? 0.55 : 1 }} />
+            </button>
+            <button onClick={signOut} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, padding: '6px 11px', cursor: 'pointer', fontSize: 12 }}>
+              <LogOut size={14} style={{ display: 'inline', marginRight: 4 }} />Logout
+            </button>
+          </div>
         }
       />
 
       <div className="page">
 
         {/* OVERVIEW */}
-        {tab === 'dashboard' && (
+        {tab === 'dashboard' && hasPermission('dashboard') && (
           <>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Space Grotesk, sans-serif' }}>Hello, {profile?.full_name?.split(' ')[0]} 👋</div>
@@ -356,18 +416,7 @@ export default function AdminApp() {
             </div>
 
             <div className="stat-grid">
-              {[
-                { label: 'Total Clients', value: stats.clients, Icon: Users, color: 'var(--blue)' },
-                { label: 'Total Goods', value: stats.goods, Icon: Package, color: 'var(--teal)' },
-                { label: 'Total CBM', value: safeTotalCbm, Icon: Boxes, color: 'var(--amber)' },
-                { label: 'In Transit', value: stats.inTransit, Icon: Ship, color: 'var(--amber)' },
-                { label: 'Delivered', value: stats.delivered, Icon: CheckCircle2, color: 'var(--green)' },
-                { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
-                { label: 'Containers', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
-                { label: 'Messages', value: stats.messages, Icon: MessageCircle, color: 'var(--red)' },
-                { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
-                { label: 'Expenses', value: formatMoney(stats.totalExpenses), Icon: FileText, color: 'var(--red)' },
-              ].map((s, i) => (
+              {dashboardStats.map((s, i) => (
                 <div key={i} className="stat-card">
                   <div className="stat-icon" style={{ background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)' }}><s.Icon size={17} color={s.color} /></div>
                   <div className="stat-value">{s.value ?? '—'}</div>
@@ -376,7 +425,7 @@ export default function AdminApp() {
               ))}
             </div>
 
-            {/* Staff permissions */}
+            {isAdmin && <>
             <SectionHeader title="Team Roles and Permissions" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{staffList.length} members</span>} />
             {staffList.map(s => (
               <div key={s.id} className="card">
@@ -412,7 +461,9 @@ export default function AdminApp() {
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{a.body.slice(0, 100)}…</div>
               </div>
             ))}
+            </>}
 
+            {isAdmin && <>
             {/* Suppliers */}
             <SectionHeader title="Suppliers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddSup(true)}>+ Add</button>} />
             {suppliers.map(s => (
@@ -426,11 +477,12 @@ export default function AdminApp() {
                 </div>
               </div>
             ))}
+            </>}
           </>
         )}
 
         {/* GOODS MANAGEMENT */}
-        {tab === 'goods' && (
+        {tab === 'goods' && hasPermission('goods') && (
           <>
             <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<div style={{ display: 'flex', gap: 8 }}><button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, recorded_at: g.created_at })))}><Download size={14} />Export</button><button className="btn btn-sm btn-primary" onClick={() => setShowRecordGoods(true)}>+ Record</button></div>} />
             <div className="card" style={{ padding: 12 }}>
@@ -482,11 +534,11 @@ export default function AdminApp() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => setShowEditGoods(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
                     <button onClick={() => removeRecord('goods', g.id, 'goods record')} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
-                    {!hasReceipt ? (
+                    {!hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
                       <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
-                    ) : (
+                    ) : hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
                       <button onClick={() => setShowReceiptView(hasReceipt)} className="btn btn-sm btn-ghost">View Receipt</button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               )
@@ -494,7 +546,7 @@ export default function AdminApp() {
           </>
         )}
 
-        {tab === 'tracking' && (
+        {tab === 'tracking' && hasPermission('scan') && (
           <>
             <SectionHeader title="Tracking Number Register" action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-tracking-register', trackedGoods.map(g => ({ tracking_no: g.tracking_no, description: g.description, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, received_at: g.created_at })))}><Download size={14} />Export</button>} />
             <div className="search-control"><Search size={18} /><input placeholder="Search tracking number, client, mark or goods" value={trackingQuery} onChange={e => { setTrackingQuery(e.target.value); setTrackingScanResult(null) }} /><button className="search-scan-button" onClick={() => setTrackingScanOpen(true)} title="Scan tracking number" aria-label="Scan tracking number"><Barcode size={18} /></button></div>
@@ -508,7 +560,7 @@ export default function AdminApp() {
           </>
         )}
 
-        {tab === 'clients' && (
+        {tab === 'clients' && hasPermission('clients') && (
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title={`Clients (${filteredClients.length})`} action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-clients', filteredClients.map(client => ({ full_name: client.full_name, phone: client.phone, state: client.state, country: client.country, shipping_mark: client.shipping_mark, notes: client.notes, registered_at: client.created_at })))}><Download size={14} />Export Excel</button>} />
@@ -523,11 +575,11 @@ export default function AdminApp() {
           <>
             <SectionHeader title="More Tools" />
             {[
-              { id: 'clients', title: 'Client Directory', text: `${clients.length} registered client${clients.length === 1 ? '' : 's'}, with export.`, Icon: Users },
-              { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
-              { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
-              { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
-            ].map(item => (
+              hasPermission('clients') && { id: 'clients', title: 'Client Directory', text: `${clients.length} registered client${clients.length === 1 ? '' : 's'}, with export.`, Icon: Users },
+              (hasPermission('goods') || hasPermission('containers')) && { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
+              hasPermission('messages') && { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
+              isAdmin && { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
+            ].filter(Boolean).map(item => (
               <button key={item.id} className="more-menu-item" onClick={() => setTab(item.id)}>
                 <span className="more-menu-icon"><item.Icon size={21} /></span><span><strong>{item.title}</strong><small>{item.text}</small></span><span className="more-menu-arrow">›</span>
               </button>
@@ -536,7 +588,7 @@ export default function AdminApp() {
         )}
 
         {/* CONTAINERS */}
-        {tab === 'containers' && (
+        {tab === 'containers' && (hasPermission('goods') || hasPermission('containers')) && (
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Containers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddCont(true)}>+ New</button>} />
@@ -590,7 +642,7 @@ export default function AdminApp() {
         )}
 
         {/* MESSAGES */}
-        {tab === 'messages' && (
+        {tab === 'messages' && hasPermission('messages') && (
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Client Messages" />
@@ -619,8 +671,9 @@ export default function AdminApp() {
         )}
 
         {/* FINANCE */}
-        {tab === 'finance' && (
+        {tab === 'finance' && (hasPermission('finance') || hasPermission('receipts')) && (
           <>
+            {hasPermission('finance') && <>
             <SectionHeader title="Financial Summary" action={<button className="btn btn-sm btn-primary" onClick={() => openExpenseForm()}>+ Expense</button>} />
             <div className="stat-grid">
               {[
@@ -658,12 +711,13 @@ export default function AdminApp() {
                 </table>
               )}
             </div>
+            </>}
 
             <SectionHeader title="Payment List" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-payments', receipts.map(r => ({ date: r.issued_at, receipt_no: r.receipt_no, client: r.client?.full_name, status: r.status, total_ngn: r.total, paid_at: r.paid_at })))}><Download size={13} />Export</button>} />
             <div className="card" style={{ padding: 8, overflowX: 'auto' }}>
               <table className="finance-table">
                 <thead>
-                  <tr><th>Date</th><th>Receipt</th><th>Client</th><th>Status</th><th>Total</th></tr>
+                  <tr><th>Date</th><th>Receipt</th><th>Client</th><th>Status</th><th>Total</th><th></th></tr>
                 </thead>
                 <tbody>
                   {receipts.map(r => (
@@ -673,6 +727,7 @@ export default function AdminApp() {
                       <td>{r.client?.full_name}</td>
                       <td>{r.status}</td>
                       <td className="amount-income">{formatMoney(r.total, r.currency || 'NGN')}</td>
+                      <td><button className="btn btn-xs btn-secondary" onClick={() => setShowReceiptView(r)}><ReceiptText size={12} />Open</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -682,7 +737,7 @@ export default function AdminApp() {
         )}
 
         {/* SETTINGS */}
-        {tab === 'settings' && (
+        {tab === 'settings' && isAdmin && (
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="System Settings" action={<span style={{ fontSize: 11, color: 'var(--muted)' }}>Admin only</span>} />
@@ -897,14 +952,43 @@ export default function AdminApp() {
         <ReceiptView receipt={showReceiptView} client={clients.find(c=>c.id===showReceiptView?.client_id)} companyName={settings.company_name || '234 Cargo'} />
         <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 12 }}>Download / Print A4 Receipt</button>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {(hasPermission('receipts') || hasPermission('finance')) && <button className="btn btn-secondary btn-full" onClick={() => openReceiptEdit(showReceiptView)}><Pencil size={15} />Edit Receipt</button>}
           {showReceiptView?.status === 'unpaid' && (
             <button className="btn btn-primary btn-full" onClick={async () => {
-              await supabase.from('receipts').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', showReceiptView.id)
+              const { error } = await supabase.from('receipts').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', showReceiptView.id)
+              if (error) { toast.error(error.message); return }
               toast.success('Marked as paid'); setShowReceiptView(null); loadAll()
             }}>Mark as Paid</button>
           )}
-          <button className="btn btn-secondary btn-full" onClick={() => window.print()}>Print</button>
         </div>
+      </Modal>
+
+      <Modal open={!!showReceiptEdit} title="Edit Receipt" onClose={() => setShowReceiptEdit(null)}>
+        {showReceiptEdit && (
+          <>
+            <div className="banner banner-info" style={{ marginBottom: 14 }}>{showReceiptEdit.receipt_no}</div>
+            <div className="input-group">
+              <label className="input-label">Subtotal (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.subtotal} onChange={event => setReceiptEditForm(form => ({ ...form, subtotal: event.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Discount (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.discount} onChange={event => setReceiptEditForm(form => ({ ...form, discount: event.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Payment Status</label>
+              <select className="input-field" value={receiptEditForm.status} onChange={event => setReceiptEditForm(form => ({ ...form, status: event.target.value }))}>
+                <option value="unpaid">Unpaid</option>
+                <option value="paid">Paid</option>
+              </select>
+            </div>
+            <div className="receipt-total" style={{ marginBottom: 16 }}>
+              <span>Updated Total</span>
+              <strong>{formatMoney(Math.max(0, (parseFloat(receiptEditForm.subtotal) || 0) - (parseFloat(receiptEditForm.discount) || 0)), 'NGN')}</strong>
+            </div>
+            <button className="btn btn-primary btn-full" onClick={saveReceiptEdit}>Save Receipt Changes</button>
+          </>
+        )}
       </Modal>
 
       {/* Message thread */}
