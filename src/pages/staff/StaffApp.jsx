@@ -140,7 +140,7 @@ export default function StaffApp() {
                   {[
                     { label: 'Total Clients', value: stats?.totalClients, Icon: Users, color: 'var(--blue)' },
                     { label: 'Total Goods', value: stats?.totalGoods, Icon: Package, color: 'var(--teal)' },
-                    { label: 'Total CBM', value: stats?.totalCbm + ' m³', Icon: Boxes, color: 'var(--amber)' },
+                    { label: 'Total CBM', value: `${stats?.totalCbm ?? '0.00'} m³`, Icon: Boxes, color: 'var(--amber)' },
                     { label: 'Recorded Today', value: stats?.todayGoods, Icon: CalendarDays, color: 'var(--green)' },
                     { label: 'In Transit', value: stats?.inTransit, Icon: Ship, color: 'var(--amber)' },
                     { label: 'Delivered', value: stats?.delivered, Icon: CheckCircle2, color: 'var(--green)' },

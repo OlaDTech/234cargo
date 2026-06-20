@@ -10,7 +10,7 @@ import RecordGoods from '../staff/RecordGoods'
 export default function AdminApp() {
   const { profile, signOut } = useAuth()
   const [tab, setTab] = useState('dashboard')
-  const [stats, setStats] = useState({})
+  const [stats, setStats] = useState({ totalCbm: '0.00' })
   const [clients, setClients] = useState([])
   const [goods, setGoods] = useState([])
   const [containers, setContainers] = useState([])
@@ -315,7 +315,7 @@ export default function AdminApp() {
               {[
                 { label: 'Total Clients', value: stats.clients, Icon: Users, color: 'var(--blue)' },
                 { label: 'Total Goods', value: stats.goods, Icon: Package, color: 'var(--teal)' },
-                { label: 'Total CBM', value: stats.totalCbm + ' m³', Icon: Boxes, color: 'var(--amber)' },
+                { label: 'Total CBM', value: `${stats.totalCbm ?? '0.00'} m³`, Icon: Boxes, color: 'var(--amber)' },
                 { label: 'In Transit', value: stats.inTransit, Icon: Ship, color: 'var(--amber)' },
                 { label: 'Delivered', value: stats.delivered, Icon: CheckCircle2, color: 'var(--green)' },
                 { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
