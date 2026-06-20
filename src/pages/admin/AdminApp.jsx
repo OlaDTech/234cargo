@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
+import { downloadReceiptPdf } from '../../lib/receiptPdf'
 
 export default function AdminApp() {
   const { profile, signOut, isAdmin, hasPermission } = useAuth()
@@ -950,7 +951,8 @@ export default function AdminApp() {
       {/* Receipt view */}
       <Modal open={!!showReceiptView} title="Receipt" onClose={() => setShowReceiptView(null)}>
         <ReceiptView receipt={showReceiptView} client={clients.find(c=>c.id===showReceiptView?.client_id)} companyName={settings.company_name || '234 Cargo'} />
-        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 12 }}>Download / Print A4 Receipt</button>
+        <button onClick={() => downloadReceiptPdf({ receipt: showReceiptView, client: clients.find(c=>c.id===showReceiptView?.client_id), companyName: settings.company_name || '234 Cargo Logistics' })} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Download size={16} />Download PDF Receipt</button>
+        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 8 }}>Print A4 Receipt</button>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           {(hasPermission('receipts') || hasPermission('finance')) && <button className="btn btn-secondary btn-full" onClick={() => openReceiptEdit(showReceiptView)}><Pencil size={15} />Edit Receipt</button>}
           {showReceiptView?.status === 'unpaid' && (

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
 import toast from 'react-hot-toast'
+import { downloadReceiptPdf } from '../../lib/receiptPdf'
 
 export default function ClientApp() {
   const { clientUser, signOut } = useAuth()
@@ -330,7 +331,8 @@ export default function ClientApp() {
       {/* Receipt modal */}
       <Modal open={!!selectedReceipt} title="Receipt" onClose={() => setSelectedReceipt(null)}>
         <ReceiptView receipt={selectedReceipt} client={clientUser} companyName={settings.company_name || '234 Cargo'} />
-        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 12 }}>Download / Print A4 Receipt</button>
+        <button onClick={() => downloadReceiptPdf({ receipt: selectedReceipt, client: clientUser, companyName: settings.company_name || '234 Cargo Logistics' })} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Download size={16} />Download PDF Receipt</button>
+        <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 8 }}>Print A4 Receipt</button>
       </Modal>
 
       {/* Shipping label modal */}
