@@ -405,10 +405,17 @@ export default function AdminApp() {
     (hasPermission('finance') || hasPermission('receipts')) && { id: 'finance', label: hasPermission('finance') ? 'Finance' : 'Receipts', Icon: Wallet },
     (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
   ].filter(Boolean)
+  const moreTabIds = [
+    hasPermission('clients') && 'clients',
+    (hasPermission('goods') || hasPermission('containers')) && 'containers',
+    hasPermission('messages') && 'messages',
+    isAdmin && 'settings',
+  ].filter(Boolean)
   const activeNav = ['clients', 'containers', 'messages', 'settings'].includes(tab) ? 'more' : tab
 
   useEffect(() => {
-    if (tabs.length && !tabs.some(item => item.id === tab)) setTab(tabs[0].id)
+    const availableTabIds = [...tabs.map(item => item.id), ...moreTabIds]
+    if (tabs.length && !availableTabIds.includes(tab)) setTab(tabs[0].id)
   }, [tab, profile?.role, profile?.permissions?.join(',')])
 
   // Group messages by client
