@@ -119,7 +119,6 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
   const [manual, setManual] = useState('')
   const [camError, setCamError] = useState('')
   const [scanning, setScanning] = useState(false)
-  const [torchSupported, setTorchSupported] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const [torchChanging, setTorchChanging] = useState(false)
   const [torchError, setTorchError] = useState('')
@@ -127,7 +126,7 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
 
   useEffect(() => {
     if (!open) return
-    setManual(''); setCamError(''); setScanning(false); setTorchSupported(false); setTorchOn(false); setTorchChanging(false); setTorchError('')
+    setManual(''); setCamError(''); setScanning(false); setTorchOn(false); setTorchChanging(false); setTorchError('')
     let scanner
     const start = async () => {
       try {
@@ -140,12 +139,6 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
           () => {}
         )
         setScanning(true)
-        try {
-          const capabilities = scanner.getRunningTrackCapabilities?.()
-          setTorchSupported(Boolean(capabilities?.torch))
-        } catch {
-          setTorchSupported(false)
-        }
       } catch {
         setCamError('Camera not available — type or paste below.')
       }
@@ -163,7 +156,7 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
   const confirm = () => { if (!manual.trim()) return; stopScan(); onResult(manual.trim()); onClose() }
   const toggleTorch = async () => {
     const scanner = html5Ref.current
-    if (!scanner?.isScanning || !torchSupported || torchChanging) return
+    if (!scanner?.isScanning || torchChanging) return
 
     const nextTorchState = !torchOn
     setTorchChanging(true)
@@ -189,7 +182,7 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
         </div>
         <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', minHeight: 180, marginBottom: 16, position: 'relative' }}>
           <div id="oa-qr-box" style={{ width: '100%' }} />
-          {scanning && torchSupported && (
+          {scanning && (
             <button
               type="button"
               className={`scanner-torch ${torchOn ? 'is-on' : ''}`}
