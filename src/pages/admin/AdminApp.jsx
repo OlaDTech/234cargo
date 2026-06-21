@@ -367,7 +367,15 @@ export default function AdminApp() {
 
     if (error) { toast.error(error.message); return }
 
-    const clientMessage = purchaseEditForm.client_message.trim()
+    const previousQuote = showPurchaseEdit.quoted_amount_rmb == null ? null : Number(showPurchaseEdit.quoted_amount_rmb)
+    const statusChanged = purchaseEditForm.status !== showPurchaseEdit.status
+    const quoteChanged = quotedAmount !== previousQuote
+    const extraMessage = purchaseEditForm.client_message.trim()
+    const itemName = showPurchaseEdit.product_name || `${purchasePlatformLabel(showPurchaseEdit.platform)} item`
+    const automaticMessage = statusChanged || quoteChanged
+      ? `Purchase update: ${itemName} is now ${purchaseStatusMeta(purchaseEditForm.status).label}.${quotedAmount == null ? '' : ` Quoted total: RMB ${Number(quotedAmount).toLocaleString()}.`}`
+      : ''
+    const clientMessage = [automaticMessage, extraMessage].filter(Boolean).join('\n\n')
     if (clientMessage) {
       const { error: messageError } = await supabase.from('messages').insert({
         client_id: showPurchaseEdit.client_id,
@@ -1025,7 +1033,7 @@ export default function AdminApp() {
               <textarea className="input-field" rows="3" placeholder="Supplier availability, final option, order reference..." value={purchaseEditForm.team_notes} onChange={event => setPurchaseEditForm(form => ({ ...form, team_notes: event.target.value }))} />
             </div>
             <div className="input-group">
-              <label className="input-label">Message to Client <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+              <label className="input-label">Extra Message to Client <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
               <textarea className="input-field" rows="3" placeholder="For example: Your RMB total is 260. Please send payment to continue." value={purchaseEditForm.client_message} onChange={event => setPurchaseEditForm(form => ({ ...form, client_message: event.target.value }))} />
             </div>
             <button className="btn btn-primary btn-full" onClick={savePurchaseRequest}><ShoppingCart size={16} />Save Purchase Update</button>

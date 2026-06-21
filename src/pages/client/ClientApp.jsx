@@ -123,6 +123,7 @@ export default function ClientApp() {
 
     setPurchaseForm(EMPTY_PURCHASE_REQUEST)
     toast.success('Purchase request sent to our China team')
+    loadAll(false)
   }
 
   const tabs = [
@@ -296,6 +297,7 @@ export default function ClientApp() {
                 <ShoppingCart size={16} />{submittingPurchase ? 'Sending Request...' : 'Send Purchase Request'}
               </button>
             </div>
+            <div className="banner banner-info" style={{ marginTop: 16 }}>We will send the approval, RMB quote, and purchase status to your Messages.</div>
           </>
         )}
 
