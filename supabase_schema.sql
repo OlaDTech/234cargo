@@ -59,7 +59,7 @@ create table if not exists profiles (
   full_name text not null,
   phone text,
   role text not null check (role in ('admin', 'staff', 'warehouse_manager')),
-  permissions text[] default array['dashboard'],
+  permissions text[] default array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages'],
   avatar_url text,
   created_at timestamptz default now()
 );
@@ -70,8 +70,8 @@ alter table profiles add constraint profiles_role_check
   check (role in ('admin', 'staff', 'warehouse_manager'));
 
 -- Every Supabase Auth team account needs a matching profile before it can
--- use the staff workspace. New accounts start as Staff with dashboard access;
--- an admin can then assign the correct role and permissions in the app.
+-- use the staff workspace. New accounts start with the standard Staff access;
+-- an admin can then add or remove permissions in the app.
 create or replace function public.create_profile_for_auth_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
@@ -81,7 +81,7 @@ begin
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(coalesce(new.email, 'team-member'), '@', 1)),
     new.phone,
     'staff',
-    array['dashboard']
+    array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']
   )
   on conflict (id) do nothing;
   return new;
@@ -100,11 +100,18 @@ select
   coalesce(auth_user.raw_user_meta_data ->> 'full_name', split_part(coalesce(auth_user.email, 'team-member'), '@', 1)),
   auth_user.phone,
   'staff',
-  array['dashboard']
+  array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']
 from auth.users as auth_user
 left join profiles on profiles.id = auth_user.id
 where profiles.id is null
 on conflict (id) do nothing;
+
+-- Upgrade the old dashboard-only Staff default to the standard Staff access.
+-- Admins can still remove any of these permissions in Settings and Staff Access.
+update profiles
+set permissions = array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']
+where role = 'staff'
+  and permissions = array['dashboard']::text[];
 
 -- ── CLIENTS ───────────────────────────────────────────────
 create table if not exists clients (
