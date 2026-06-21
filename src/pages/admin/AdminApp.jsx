@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw, ShoppingCart, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { createClientRecord, supabase, updateClient } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -9,6 +9,7 @@ import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
+import { marketplaceUrl, purchasePlatformLabel, purchaseStatusMeta, PURCHASE_STATUSES } from '../../lib/purchaseRequests'
 
 export default function AdminApp() {
   const { profile, signOut, isAdmin, hasPermission } = useAuth()
@@ -22,6 +23,7 @@ export default function AdminApp() {
   const [announcements, setAnnouncements] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [messages, setMessages] = useState([])
+  const [purchaseRequests, setPurchaseRequests] = useState([])
   const [settings, setSettings] = useState({})
   const [staffList, setStaffList] = useState([])
   const [loading, setLoading] = useState(true)
@@ -46,6 +48,7 @@ export default function AdminApp() {
   const [clientScanOpen, setClientScanOpen] = useState(false)
   const [trackingScanOpen, setTrackingScanOpen] = useState(false)
   const [trackingScanResult, setTrackingScanResult] = useState(null)
+  const [showPurchaseEdit, setShowPurchaseEdit] = useState(null)
 
   const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
@@ -55,12 +58,15 @@ export default function AdminApp() {
   const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
   const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
+  const [purchaseEditForm, setPurchaseEditForm] = useState({ status: 'submitted', quoted_amount_rmb: '', team_notes: '', client_message: '' })
   const [goodsQuery, setGoodsQuery] = useState('')
   const [goodsTypeFilter, setGoodsTypeFilter] = useState('all')
   const [goodsStatusFilter, setGoodsStatusFilter] = useState('all')
   const [goodsSort, setGoodsSort] = useState('newest')
   const [trackingQuery, setTrackingQuery] = useState('')
   const [clientQuery, setClientQuery] = useState('')
+  const [purchaseQuery, setPurchaseQuery] = useState('')
+  const [purchaseStatusFilter, setPurchaseStatusFilter] = useState('all')
   const [adminLabelType, setAdminLabelType] = useState('sea')
   const reloadTimer = useRef(null)
   const messageListRef = useRef(null)
@@ -82,6 +88,7 @@ export default function AdminApp() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleReload)
       .subscribe()
@@ -109,13 +116,14 @@ export default function AdminApp() {
       supabase.from('announcements').select('*').order('created_at', { ascending: false }),
       supabase.from('suppliers').select('*').order('name'),
       supabase.from('messages').select('*,client:clients(full_name)').order('created_at'),
+      supabase.from('purchase_requests').select('*,client:clients(full_name,phone,shipping_mark)').order('created_at', { ascending: false }),
       supabase.from('settings').select('key,value'),
       supabase.from('profiles').select('*').order('full_name'),
     ])
-    const [c, g, cont, rec, exp, ann, sup, msg, cfg, staff] = results.map(r => r.data || [])
+    const [c, g, cont, rec, exp, ann, sup, msg, purchases, cfg, staff] = results.map(r => r.data || [])
     setClients(c); setGoods(g); setContainers(cont); setReceipts(rec)
     setExpenses(exp)
-    setAnnouncements(ann); setSuppliers(sup); setMessages(msg)
+    setAnnouncements(ann); setSuppliers(sup); setMessages(msg); setPurchaseRequests(purchases)
     setStaffList(staff)
     const cfgMap = Object.fromEntries(cfg.map(r => [r.key, r.value]))
     setSettings(cfgMap)
@@ -123,11 +131,12 @@ export default function AdminApp() {
     const totalCbm = g.reduce((s, x) => s + (parseFloat(x.cbm) || 0), 0)
     const paidIncome = rec.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.total) || 0), 0)
     const totalExpenses = exp.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)
-    setStats({ clients: c.length, goods: g.length, totalCbm: totalCbm.toFixed(2), inTransit: g.filter(x=>x.status==='in_transit').length, delivered: g.filter(x=>x.status==='delivered').length, receipts: rec.length, containers: cont.length, messages: msg.filter(m=>m.sender==='client').length, paidIncome, totalExpenses, netBalance: paidIncome - totalExpenses })
+    setStats({ clients: c.length, goods: g.length, totalCbm: totalCbm.toFixed(2), inTransit: g.filter(x=>x.status==='in_transit').length, delivered: g.filter(x=>x.status==='delivered').length, receipts: rec.length, containers: cont.length, messages: msg.filter(m=>m.sender==='client').length, purchases: purchases.filter(request => !['purchased', 'unavailable', 'cancelled'].includes(request.status)).length, paidIncome, totalExpenses, netBalance: paidIncome - totalExpenses })
     setShowContainerDetail(prev => prev ? (cont.find(x => x.id === prev.id) || prev) : prev)
     setShowReceiptView(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
     setShowReceiptEdit(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
     setShowMsgThread(prev => prev ? (c.find(x => x.id === prev.id) || prev) : prev)
+    setShowPurchaseEdit(prev => prev ? (purchases.find(x => x.id === prev.id) || prev) : prev)
     if (showLoader) setLoading(false)
   }
 
@@ -334,6 +343,45 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const openPurchaseRequest = request => {
+    setShowPurchaseEdit(request)
+    setPurchaseEditForm({
+      status: request.status || 'submitted',
+      quoted_amount_rmb: request.quoted_amount_rmb == null ? '' : String(request.quoted_amount_rmb),
+      team_notes: request.team_notes || '',
+      client_message: '',
+    })
+  }
+
+  const savePurchaseRequest = async () => {
+    if (!showPurchaseEdit) return
+    const quotedAmount = purchaseEditForm.quoted_amount_rmb.trim() === ''
+      ? null
+      : Math.max(0, parseFloat(purchaseEditForm.quoted_amount_rmb) || 0)
+    const { error } = await supabase.from('purchase_requests').update({
+      status: purchaseEditForm.status,
+      quoted_amount_rmb: quotedAmount,
+      team_notes: purchaseEditForm.team_notes.trim() || null,
+      handled_by: profile?.id,
+    }).eq('id', showPurchaseEdit.id)
+
+    if (error) { toast.error(error.message); return }
+
+    const clientMessage = purchaseEditForm.client_message.trim()
+    if (clientMessage) {
+      const { error: messageError } = await supabase.from('messages').insert({
+        client_id: showPurchaseEdit.client_id,
+        sender: isAdmin ? 'admin' : 'staff',
+        message: clientMessage,
+      })
+      if (messageError) toast.error('Request updated, but the client message could not be sent')
+    }
+
+    toast.success('Purchase request updated')
+    setShowPurchaseEdit(null)
+    loadAll()
+  }
+
   const saveEditedGoods = async () => {
     if (!showEditGoods?.description?.trim()) { toast.error('Description is required'); return }
     const payload = {
@@ -403,15 +451,16 @@ export default function AdminApp() {
     hasPermission('goods') && { id: 'goods', label: 'Goods', Icon: Package },
     hasPermission('scan') && { id: 'tracking', label: 'Track', Icon: Barcode },
     (hasPermission('finance') || hasPermission('receipts')) && { id: 'finance', label: hasPermission('finance') ? 'Finance' : 'Receipts', Icon: Wallet },
-    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
+    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages') || hasPermission('purchases')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
   ].filter(Boolean)
   const moreTabIds = [
     hasPermission('clients') && 'clients',
     (hasPermission('goods') || hasPermission('containers')) && 'containers',
     hasPermission('messages') && 'messages',
+    hasPermission('purchases') && 'purchases',
     isAdmin && 'settings',
   ].filter(Boolean)
-  const activeNav = ['clients', 'containers', 'messages', 'settings'].includes(tab) ? 'more' : tab
+  const activeNav = ['clients', 'containers', 'messages', 'purchases', 'settings'].includes(tab) ? 'more' : tab
 
   useEffect(() => {
     const availableTabIds = [...tabs.map(item => item.id), ...moreTabIds]
@@ -445,6 +494,11 @@ export default function AdminApp() {
     const term = clientQuery.trim().toLowerCase()
     return !term || [client.full_name, client.phone, client.shipping_mark, client.state].some(value => String(value || '').toLowerCase().includes(term))
   })
+  const filteredPurchaseRequests = purchaseRequests.filter(request => {
+    const term = purchaseQuery.trim().toLowerCase()
+    const matchesTerm = !term || [request.product_name, request.product_link, request.platform, request.client?.full_name, request.client?.shipping_mark].some(value => String(value || '').toLowerCase().includes(term))
+    return matchesTerm && (purchaseStatusFilter === 'all' || request.status === purchaseStatusFilter)
+  })
   const totalCbmDisplay = Number.parseFloat(stats.totalCbm)
   const safeTotalCbm = Number.isFinite(totalCbmDisplay) ? totalCbmDisplay.toFixed(2) : '0.00'
   const dashboardStats = [
@@ -456,13 +510,14 @@ export default function AdminApp() {
     (isAdmin || hasPermission('finance') || hasPermission('receipts')) && { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
     (isAdmin || hasPermission('containers')) && { label: 'Containers', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
     (isAdmin || hasPermission('messages')) && { label: 'Messages', value: stats.messages, Icon: MessageCircle, color: 'var(--red)' },
+    (isAdmin || hasPermission('purchases')) && { label: 'Purchase Requests', value: stats.purchases, Icon: ShoppingCart, color: 'var(--violet)' },
     (isAdmin || hasPermission('finance')) && { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
     (isAdmin || hasPermission('finance')) && { label: 'Expenses', value: formatMoney(stats.totalExpenses), Icon: FileText, color: 'var(--red)' },
   ].filter(Boolean)
 
   return (
     <div className="app-shell">
-      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
+      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data" style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, cursor: refreshing ? 'wait' : 'pointer' }}>
@@ -648,12 +703,55 @@ export default function AdminApp() {
               hasPermission('clients') && { id: 'clients', title: 'Client Directory', text: `${clients.length} registered client${clients.length === 1 ? '' : 's'}, with export.`, Icon: Users },
               (hasPermission('goods') || hasPermission('containers')) && { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
               hasPermission('messages') && { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
+              hasPermission('purchases') && { id: 'purchases', title: 'Purchase Requests', text: `${stats.purchases || 0} open request${stats.purchases === 1 ? '' : 's'} from clients.`, Icon: ShoppingCart },
               isAdmin && { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
             ].filter(Boolean).map(item => (
               <button key={item.id} className="more-menu-item" onClick={() => setTab(item.id)}>
                 <span className="more-menu-icon"><item.Icon size={21} /></span><span><strong>{item.title}</strong><small>{item.text}</small></span><span className="more-menu-arrow">›</span>
               </button>
             ))}
+          </>
+        )}
+
+        {/* PURCHASE REQUESTS */}
+        {tab === 'purchases' && hasPermission('purchases') && (
+          <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
+            <SectionHeader title={`Purchase Requests (${filteredPurchaseRequests.length})`} action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-purchase-requests', filteredPurchaseRequests.map(request => ({ submitted_at: request.created_at, client: request.client?.full_name, shipping_mark: request.client?.shipping_mark, platform: purchasePlatformLabel(request.platform), product_name: request.product_name, product_link: request.product_link, variant: request.variant, quantity: request.quantity, status: purchaseStatusMeta(request.status).label, quoted_amount_rmb: request.quoted_amount_rmb, notes: request.notes, team_notes: request.team_notes })))}><Download size={13} />Export</button>} />
+            <div className="card" style={{ padding: 12 }}>
+              <div className="search-control" style={{ marginBottom: 10 }}><Search size={18} /><input placeholder="Search client, shipping mark, link or item" value={purchaseQuery} onChange={event => setPurchaseQuery(event.target.value)} /></div>
+              <select className="input-field" value={purchaseStatusFilter} onChange={event => setPurchaseStatusFilter(event.target.value)}>
+                <option value="all">All request stages</option>
+                {PURCHASE_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+              </select>
+            </div>
+            {loading ? <SkeletonList /> : filteredPurchaseRequests.length === 0 ? <EmptyState icon="store" title="No purchase requests" text="Client marketplace links will appear here." /> : filteredPurchaseRequests.map(request => {
+              const status = purchaseStatusMeta(request.status)
+              const productUrl = marketplaceUrl(request.product_link)
+              return (
+                <div key={request.id} className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{request.product_name || 'Marketplace item'}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>{request.client?.full_name} · {request.client?.shipping_mark}</div>
+                    </div>
+                    <span style={{ flexShrink: 0, padding: '4px 8px', borderRadius: 7, background: `color-mix(in srgb, ${status.color} 13%, white)`, color: status.color, fontSize: 11, fontWeight: 800 }}>{status.label}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                    <span style={{ background: 'var(--surface)', color: 'var(--t2)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{purchasePlatformLabel(request.platform)}</span>
+                    <span style={{ background: 'var(--surface)', color: 'var(--t2)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>Qty {request.quantity}</span>
+                    {request.variant && <span style={{ background: 'var(--surface)', color: 'var(--t2)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{request.variant}</span>}
+                    {request.quoted_amount_rmb != null && <span style={{ background: 'var(--teal-l)', color: 'var(--teal-d)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800 }}>RMB {Number(request.quoted_amount_rmb).toLocaleString()}</span>}
+                  </div>
+                  {request.notes && <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45, marginTop: 10 }}>{request.notes}</div>}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                    {productUrl && <a className="btn btn-sm btn-secondary" href={productUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />Open Product</a>}
+                    <button className="btn btn-sm btn-primary" onClick={() => openPurchaseRequest(request)}><Pencil size={14} />Review</button>
+                    <span style={{ marginLeft: 'auto', alignSelf: 'center', color: 'var(--muted)', fontSize: 11 }}>{fmtAgo(request.created_at)}</span>
+                  </div>
+                </div>
+              )
+            })}
           </>
         )}
 
@@ -897,6 +995,44 @@ export default function AdminApp() {
       </Modal>
 
       {/* Goods edit */}
+      <Modal open={!!showPurchaseEdit} title="Review Purchase Request" onClose={() => setShowPurchaseEdit(null)}>
+        {showPurchaseEdit && (
+          <>
+            <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 13, marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{showPurchaseEdit.product_name || 'Marketplace item'}</div>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>{showPurchaseEdit.client?.full_name} · {showPurchaseEdit.client?.shipping_mark}</div>
+              <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>{showPurchaseEdit.client?.phone}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                <span style={{ background: 'var(--white)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{purchasePlatformLabel(showPurchaseEdit.platform)}</span>
+                <span style={{ background: 'var(--white)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>Qty {showPurchaseEdit.quantity}</span>
+                {showPurchaseEdit.variant && <span style={{ background: 'var(--white)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{showPurchaseEdit.variant}</span>}
+              </div>
+              {showPurchaseEdit.notes && <div style={{ fontSize: 13, lineHeight: 1.45, marginTop: 10 }}>{showPurchaseEdit.notes}</div>}
+              {marketplaceUrl(showPurchaseEdit.product_link) && <a className="btn btn-sm btn-secondary" style={{ marginTop: 12 }} href={marketplaceUrl(showPurchaseEdit.product_link)} target="_blank" rel="noreferrer"><ExternalLink size={14} />Open Product Link</a>}
+            </div>
+            <div className="input-group">
+              <label className="input-label">Request Stage</label>
+              <select className="input-field" value={purchaseEditForm.status} onChange={event => setPurchaseEditForm(form => ({ ...form, status: event.target.value }))}>
+                {PURCHASE_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Quoted Total (RMB)</label>
+              <input className="input-field" type="number" min="0" step="0.01" inputMode="decimal" placeholder="Leave blank until priced" value={purchaseEditForm.quoted_amount_rmb} onChange={event => setPurchaseEditForm(form => ({ ...form, quoted_amount_rmb: event.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Internal Team Notes</label>
+              <textarea className="input-field" rows="3" placeholder="Supplier availability, final option, order reference..." value={purchaseEditForm.team_notes} onChange={event => setPurchaseEditForm(form => ({ ...form, team_notes: event.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Message to Client <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+              <textarea className="input-field" rows="3" placeholder="For example: Your RMB total is 260. Please send payment to continue." value={purchaseEditForm.client_message} onChange={event => setPurchaseEditForm(form => ({ ...form, client_message: event.target.value }))} />
+            </div>
+            <button className="btn btn-primary btn-full" onClick={savePurchaseRequest}><ShoppingCart size={16} />Save Purchase Update</button>
+          </>
+        )}
+      </Modal>
+
       <ScannerModal open={clientScanOpen} onClose={() => setClientScanOpen(false)} onResult={searchClientFromScan} title="Scan Client Shipping Label" />
       <ScannerModal open={trackingScanOpen} onClose={() => setTrackingScanOpen(false)} onResult={identifyTrackingOwner} title="Scan Tracking Number to Identify Owner" />
 

@@ -7,6 +7,7 @@ export const PERMISSIONS = [
   'receipts',
   'finance',
   'messages',
+  'purchases',
 ]
 
 export const ROLE_OPTIONS = [
@@ -17,7 +18,7 @@ export const ROLE_OPTIONS = [
 
 export const DEFAULT_PERMISSIONS_BY_ROLE = {
   admin: PERMISSIONS,
-  staff: ['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages'],
+  staff: ['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages', 'purchases'],
   warehouse_manager: ['dashboard', 'goods', 'scan', 'containers'],
 }
 

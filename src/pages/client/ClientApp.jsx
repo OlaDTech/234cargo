@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
+import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
 
 export default function ClientApp() {
   const { clientUser, signOut } = useAuth()
@@ -22,6 +23,8 @@ export default function ClientApp() {
   const [selectedReceipt, setSelectedReceipt] = useState(null)
   const [showLabel, setShowLabel] = useState(false)
   const [labelShipmentType, setLabelShipmentType] = useState('sea')
+  const [purchaseForm, setPurchaseForm] = useState(EMPTY_PURCHASE_REQUEST)
+  const [submittingPurchase, setSubmittingPurchase] = useState(false)
   const reloadTimer = useRef(null)
   const chatListRef = useRef(null)
 
@@ -94,6 +97,34 @@ export default function ClientApp() {
     catch { toast.error('Allow clipboard access to paste') }
   }
 
+  const submitPurchaseRequest = async () => {
+    const productLink = marketplaceUrl(purchaseForm.product_link)
+    if (!productLink) {
+      toast.error('Paste a complete product link that starts with https:// or http://')
+      return
+    }
+
+    setSubmittingPurchase(true)
+    const { error } = await supabase.from('purchase_requests').insert({
+      client_id: clientUser.id,
+      platform: purchaseForm.platform,
+      product_link: productLink,
+      product_name: purchaseForm.product_name.trim() || null,
+      variant: purchaseForm.variant.trim() || null,
+      quantity: Math.max(1, parseInt(purchaseForm.quantity, 10) || 1),
+      notes: purchaseForm.notes.trim() || null,
+    })
+    setSubmittingPurchase(false)
+
+    if (error) {
+      toast.error('Could not submit your request. Please try again.')
+      return
+    }
+
+    setPurchaseForm(EMPTY_PURCHASE_REQUEST)
+    toast.success('Purchase request sent to our China team')
+  }
+
   const tabs = [
     { id: 'home', label: 'Home', Icon: Home },
     { id: 'goods', label: 'My Goods', Icon: Package },
@@ -101,7 +132,7 @@ export default function ClientApp() {
     { id: 'chat', label: 'Messages', Icon: MessageCircle },
     { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
-  const activeNav = ['label', 'suppliers'].includes(tab) ? 'more' : tab
+  const activeNav = ['label', 'suppliers', 'purchase'].includes(tab) ? 'more' : tab
 
   const inWarehouse = goods.filter(g => g.status === 'in_warehouse').length
   const inTransit = goods.filter(g => g.status === 'in_transit').length
@@ -207,6 +238,7 @@ export default function ClientApp() {
           <>
             <SectionHeader title="More" />
             {[
+              { id: 'purchase', title: 'Buy for Me', text: 'Send a 1688, Taobao or Pinduoduo link. We buy and ship it for you.', Icon: ShoppingCart },
               { id: 'label', title: 'Shipping Label', text: 'View, print or share your shipping mark label.', Icon: Tag },
               { id: 'suppliers', title: 'Supplier Directory', text: 'Browse the approved supplier directory.', Icon: ShoppingBag },
             ].map(item => (
@@ -214,6 +246,50 @@ export default function ClientApp() {
                 <span className="more-menu-icon"><item.Icon size={21} /></span><span><strong>{item.title}</strong><small>{item.text}</small></span><span className="more-menu-arrow">›</span>
               </button>
             ))}
+          </>
+        )}
+
+        {/* PURCHASE REQUEST */}
+        {tab === 'purchase' && (
+          <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
+            <SectionHeader title="Buy From China" />
+            <div className="banner banner-info" style={{ marginBottom: 16 }}>
+              Send a product link from 1688, Taobao, or Pinduoduo. Our team will confirm the RMB total and payment details before buying.
+            </div>
+            <div className="card">
+              <div className="input-group">
+                <label className="input-label">Marketplace</label>
+                <select className="input-field" value={purchaseForm.platform} onChange={event => setPurchaseForm(form => ({ ...form, platform: event.target.value }))}>
+                  {PURCHASE_PLATFORMS.map(platform => <option key={platform.value} value={platform.value}>{platform.label}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Product Link</label>
+                <input className="input-field" type="url" inputMode="url" placeholder="https://..." value={purchaseForm.product_link} onChange={event => setPurchaseForm(form => ({ ...form, product_link: event.target.value }))} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Product Name <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                <input className="input-field" placeholder="For example: Stainless food flask" value={purchaseForm.product_name} onChange={event => setPurchaseForm(form => ({ ...form, product_name: event.target.value }))} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 96px', gap: 10 }}>
+                <div className="input-group">
+                  <label className="input-label">Colour, size, or variant</label>
+                  <input className="input-field" placeholder="For example: Black, 42" value={purchaseForm.variant} onChange={event => setPurchaseForm(form => ({ ...form, variant: event.target.value }))} />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Quantity</label>
+                  <input className="input-field" type="number" min="1" inputMode="numeric" value={purchaseForm.quantity} onChange={event => setPurchaseForm(form => ({ ...form, quantity: event.target.value }))} />
+                </div>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Extra Details <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                <textarea className="input-field" rows="4" placeholder="Add any size, colour, quality, or delivery instructions." value={purchaseForm.notes} onChange={event => setPurchaseForm(form => ({ ...form, notes: event.target.value }))} />
+              </div>
+              <button className="btn btn-primary btn-full" onClick={submitPurchaseRequest} disabled={submittingPurchase} style={{ marginTop: 4 }}>
+                <ShoppingCart size={16} />{submittingPurchase ? 'Sending Request...' : 'Send Purchase Request'}
+              </button>
+            </div>
           </>
         )}
 

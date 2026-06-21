@@ -59,7 +59,7 @@ create table if not exists profiles (
   full_name text not null,
   phone text,
   role text not null check (role in ('admin', 'staff', 'warehouse_manager')),
-  permissions text[] default array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages'],
+  permissions text[] default array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages', 'purchases'],
   avatar_url text,
   created_at timestamptz default now()
 );
@@ -68,6 +68,7 @@ create table if not exists profiles (
 alter table profiles drop constraint if exists profiles_role_check;
 alter table profiles add constraint profiles_role_check
   check (role in ('admin', 'staff', 'warehouse_manager'));
+alter table profiles alter column permissions set default array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages', 'purchases'];
 
 -- Every Supabase Auth team account needs a matching profile before it can
 -- use the staff workspace. New accounts start with the standard Staff access;
@@ -81,7 +82,7 @@ begin
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(coalesce(new.email, 'team-member'), '@', 1)),
     new.phone,
     'staff',
-    array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']
+    array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages', 'purchases']
   )
   on conflict (id) do nothing;
   return new;
@@ -100,7 +101,7 @@ select
   coalesce(auth_user.raw_user_meta_data ->> 'full_name', split_part(coalesce(auth_user.email, 'team-member'), '@', 1)),
   auth_user.phone,
   'staff',
-  array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']
+  array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages', 'purchases']
 from auth.users as auth_user
 left join profiles on profiles.id = auth_user.id
 where profiles.id is null
@@ -109,9 +110,12 @@ on conflict (id) do nothing;
 -- Upgrade the old dashboard-only Staff default to the standard Staff access.
 -- Admins can still remove any of these permissions in Settings and Staff Access.
 update profiles
-set permissions = array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']
+set permissions = array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages', 'purchases']
 where role = 'staff'
-  and permissions = array['dashboard']::text[];
+  and permissions in (
+    array['dashboard']::text[],
+    array['dashboard', 'clients', 'goods', 'scan', 'receipts', 'messages']::text[]
+  );
 
 -- ── CLIENTS ───────────────────────────────────────────────
 create table if not exists clients (
@@ -268,6 +272,28 @@ create table if not exists messages (
 
 create index if not exists messages_client_id_created_at_idx on messages (client_id, created_at);
 
+-- ── PURCHASE REQUESTS ────────────────────────────────────
+-- Clients submit marketplace links here when they want the team to buy in China.
+create table if not exists purchase_requests (
+  id uuid primary key default uuid_generate_v4(),
+  client_id uuid not null references clients(id) on delete cascade,
+  platform text not null check (platform in ('1688', 'taobao', 'pinduoduo', 'other')),
+  product_link text not null,
+  product_name text,
+  variant text,
+  quantity integer not null default 1 check (quantity > 0),
+  notes text,
+  status text not null default 'submitted' check (status in ('submitted', 'reviewing', 'awaiting_payment', 'payment_confirmed', 'purchased', 'unavailable', 'cancelled')),
+  quoted_amount_rmb numeric,
+  team_notes text,
+  handled_by uuid references profiles(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists purchase_requests_client_id_idx on purchase_requests (client_id, created_at desc);
+create index if not exists purchase_requests_status_idx on purchase_requests (status, created_at desc);
+
 -- ── SCAN LOG ──────────────────────────────────────────────
 create table if not exists scan_logs (
   id uuid primary key default uuid_generate_v4(),
@@ -291,6 +317,7 @@ alter table expenses enable row level security;
 alter table announcements enable row level security;
 alter table suppliers enable row level security;
 alter table messages enable row level security;
+alter table purchase_requests enable row level security;
 alter table scan_logs enable row level security;
 alter table settings enable row level security;
 
@@ -310,6 +337,7 @@ begin
     'announcements',
     'suppliers',
     'messages',
+    'purchase_requests',
     'settings'
   ]
   loop
@@ -434,6 +462,15 @@ create policy "msg_public_read" on messages for select using (true);
 drop policy if exists "msg_public_insert" on messages;
 create policy "msg_public_insert" on messages for insert with check (sender = 'client');
 
+-- PURCHASE REQUESTS: clients can submit a link; only the purchase team can view or manage requests.
+drop policy if exists "purchase_requests_team_all" on purchase_requests;
+create policy "purchase_requests_team_all" on purchase_requests for all
+  using (has_permission('purchases'))
+  with check (has_permission('purchases'));
+drop policy if exists "purchase_requests_client_submit" on purchase_requests;
+create policy "purchase_requests_client_submit" on purchase_requests for insert
+  with check (true);
+
 -- SCAN LOG
 drop policy if exists "scan_all" on scan_logs;
 create policy "scan_all" on scan_logs for all
@@ -458,6 +495,9 @@ create trigger goods_updated_at before update on goods
   for each row execute function update_updated_at();
 drop trigger if exists expenses_updated_at on expenses;
 create trigger expenses_updated_at before update on expenses
+  for each row execute function update_updated_at();
+drop trigger if exists purchase_requests_updated_at on purchase_requests;
+create trigger purchase_requests_updated_at before update on purchase_requests
   for each row execute function update_updated_at();
 
 -- Generate shipping mark: MY-NNN-XXX
