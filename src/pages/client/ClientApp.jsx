@@ -170,6 +170,12 @@ export default function ClientApp() {
               <button onClick={() => setShowLabel(true)}><QrCode size={18} />Label</button>
             </section>
 
+            <button type="button" className="client-purchase-card" onClick={() => setTab('purchase')}>
+              <span className="client-purchase-icon"><ShoppingCart size={21} /></span>
+              <span className="client-purchase-copy"><small>Shopping Assistance</small><strong>Buy From China</strong><em>Send a 1688, Taobao, or Pinduoduo link. We buy and ship it for you.</em></span>
+              <ArrowRight size={19} />
+            </button>
+
             {loading ? <SkeletonList n={2} /> : currentShipment ? (
               <section className="shipment-focus-card" onClick={() => setSelectedGoods(currentShipment)}>
                 <div className="shipment-focus-top"><div><span>Current shipment</span><h2>{currentShipment.description}</h2></div><StatusPill status={currentShipment.status} /></div>
