@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
+import { Flashlight, FlashlightOff } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Icons } from './Icons'
 import { generateQR } from '../lib/qr'
@@ -118,11 +119,15 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
   const [manual, setManual] = useState('')
   const [camError, setCamError] = useState('')
   const [scanning, setScanning] = useState(false)
+  const [torchSupported, setTorchSupported] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
+  const [torchChanging, setTorchChanging] = useState(false)
+  const [torchError, setTorchError] = useState('')
   const html5Ref = useRef(null)
 
   useEffect(() => {
     if (!open) return
-    setManual(''); setCamError(''); setScanning(false)
+    setManual(''); setCamError(''); setScanning(false); setTorchSupported(false); setTorchOn(false); setTorchChanging(false); setTorchError('')
     let scanner
     const start = async () => {
       try {
@@ -135,6 +140,12 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
           () => {}
         )
         setScanning(true)
+        try {
+          const capabilities = scanner.getRunningTrackCapabilities?.()
+          setTorchSupported(Boolean(capabilities?.torch))
+        } catch {
+          setTorchSupported(false)
+        }
       } catch {
         setCamError('Camera not available — type or paste below.')
       }
@@ -150,6 +161,22 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
   }
   const handleClose = () => { stopScan(); onClose() }
   const confirm = () => { if (!manual.trim()) return; stopScan(); onResult(manual.trim()); onClose() }
+  const toggleTorch = async () => {
+    const scanner = html5Ref.current
+    if (!scanner?.isScanning || !torchSupported || torchChanging) return
+
+    const nextTorchState = !torchOn
+    setTorchChanging(true)
+    setTorchError('')
+    try {
+      await scanner.applyVideoConstraints({ advanced: [{ torch: nextTorchState }] })
+      setTorchOn(nextTorchState)
+    } catch {
+      setTorchError('Flashlight is not available on this camera.')
+    } finally {
+      setTorchChanging(false)
+    }
+  }
 
   if (!open) return null
   return (
@@ -162,11 +189,25 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
         </div>
         <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', minHeight: 180, marginBottom: 16, position: 'relative' }}>
           <div id="oa-qr-box" style={{ width: '100%' }} />
+          {scanning && torchSupported && (
+            <button
+              type="button"
+              className={`scanner-torch ${torchOn ? 'is-on' : ''}`}
+              onClick={toggleTorch}
+              disabled={torchChanging}
+              aria-pressed={torchOn}
+              title={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
+            >
+              {torchOn ? <FlashlightOff size={17} /> : <Flashlight size={17} />}
+              <span>{torchOn ? 'Light on' : 'Light'}</span>
+            </button>
+          )}
           {!scanning && !camError && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 13 }}>
               Starting camera…
             </div>
           )}
+          {torchError && <div className="scanner-torch-message">{torchError}</div>}
         </div>
         {camError && <div className="banner banner-warn">{camError}</div>}
         <div className="divider-text">or enter manually</div>

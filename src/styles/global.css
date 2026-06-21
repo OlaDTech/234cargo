@@ -152,6 +152,10 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .scan-box { border: 1.5px dashed var(--teal); border-radius: var(--radius-lg); padding: 24px; text-align: center; background: var(--teal-l); margin-bottom: 16px; }
 #qr-reader, #oa-qr-box { width: 100% !important; border: none !important; }
 #qr-reader video, #oa-qr-box video { border-radius: var(--radius-md); }
+.scanner-torch { position: absolute; top: 12px; right: 12px; z-index: 4; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255,255,255,.4); border-radius: 8px; background: rgba(10,22,40,.82); color: #fff; padding: 8px 10px; font: 700 12px 'Inter', sans-serif; cursor: pointer; }
+.scanner-torch.is-on { background: var(--teal); border-color: var(--teal); }
+.scanner-torch:disabled { opacity: .6; cursor: wait; }
+.scanner-torch-message { position: absolute; right: 10px; bottom: 10px; left: 10px; z-index: 4; border-radius: 7px; background: rgba(10,22,40,.86); color: #fff; padding: 8px 10px; font-size: 12px; text-align: center; }
 .scan-trigger { padding: 11px 13px; border-radius: var(--radius-md); background: var(--ink); border: none; color: var(--teal); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
 .divider { height: 1px; background: var(--line); margin: 16px 0; }

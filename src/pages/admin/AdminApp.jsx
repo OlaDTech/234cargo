@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { supabase } from '../../lib/supabase'
+import { createClientRecord, supabase, updateClient } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
+import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 
 export default function AdminApp() {
   const { profile, signOut, isAdmin, hasPermission } = useAuth()
@@ -36,6 +37,7 @@ export default function AdminApp() {
   const [showAddAnn, setShowAddAnn] = useState(false)
   const [showAddSup, setShowAddSup] = useState(false)
   const [showAddCont, setShowAddCont] = useState(false)
+  const [showAddClient, setShowAddClient] = useState(false)
   const [showEditClient, setShowEditClient] = useState(null)
   const [showEditGoods, setShowEditGoods] = useState(null)
   const [showRecordGoods, setShowRecordGoods] = useState(false)
@@ -48,6 +50,7 @@ export default function AdminApp() {
   const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou → Port Klang', status: 'loading', departure_date: '', arrival_date: '' })
+  const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
   const [receiptForm, setReceiptForm] = useState({ discount: 0 })
   const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
@@ -214,6 +217,65 @@ export default function AdminApp() {
     if (error) { toast.error(error.message); return }
     toast.success('Message deleted')
     loadAll()
+  }
+
+  const openClientForm = client => {
+    if (client) {
+      setShowEditClient(client)
+      setClientForm({
+        full_name: client.full_name || '',
+        phone: client.phone || '',
+        country: client.country || NIGERIA_COUNTRY,
+        state: client.state || DEFAULT_NIGERIA_STATE,
+        password_hash: '',
+        notes: client.notes || '',
+      })
+    } else {
+      setShowAddClient(true)
+      setClientForm({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
+    }
+  }
+
+  const saveClient = async () => {
+    if (!clientForm.full_name.trim() || !clientForm.phone.trim()) {
+      toast.error('Enter the client name and phone number')
+      return
+    }
+    if (!showEditClient && !clientForm.password_hash.trim()) {
+      toast.error('Set a client login password')
+      return
+    }
+
+    try {
+      if (showEditClient) {
+        const payload = {
+          full_name: clientForm.full_name.trim(),
+          phone: clientForm.phone.trim(),
+          country: NIGERIA_COUNTRY,
+          state: clientForm.state,
+          notes: clientForm.notes.trim() || null,
+        }
+        if (clientForm.password_hash.trim()) payload.password_hash = clientForm.password_hash
+        await updateClient(showEditClient.id, payload)
+        toast.success('Client updated')
+      } else {
+        const created = await createClientRecord({
+          full_name: clientForm.full_name.trim(),
+          phone: clientForm.phone.trim(),
+          country: NIGERIA_COUNTRY,
+          state: clientForm.state,
+          password_hash: clientForm.password_hash,
+          notes: clientForm.notes.trim() || null,
+          created_by: profile?.id,
+        })
+        toast.success(`Client registered: ${created.shipping_mark}`)
+      }
+      setShowAddClient(false)
+      setShowEditClient(null)
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not save client')
+    }
   }
 
   const updateContainerStatus = async (id, status) => {
@@ -564,10 +626,10 @@ export default function AdminApp() {
         {tab === 'clients' && hasPermission('clients') && (
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
-            <SectionHeader title={`Clients (${filteredClients.length})`} action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-clients', filteredClients.map(client => ({ full_name: client.full_name, phone: client.phone, state: client.state, country: client.country, shipping_mark: client.shipping_mark, notes: client.notes, registered_at: client.created_at })))}><Download size={14} />Export Excel</button>} />
+            <SectionHeader title={`Clients (${filteredClients.length})`} action={<div style={{ display: 'flex', gap: 8 }}><button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-clients', filteredClients.map(client => ({ full_name: client.full_name, phone: client.phone, state: client.state, country: client.country, shipping_mark: client.shipping_mark, notes: client.notes, registered_at: client.created_at })))}><Download size={14} />Export</button><button className="btn btn-sm btn-primary" onClick={() => openClientForm()}>+ Client</button></div>} />
             <div className="search-control"><Search size={18} /><input placeholder="Search name, phone, state or shipping mark" value={clientQuery} onChange={e => setClientQuery(e.target.value)} /><button className="search-scan-button" onClick={() => setClientScanOpen(true)} title="Scan client shipping label" aria-label="Scan client shipping label"><Barcode size={18} /></button></div>
             {filteredClients.length === 0 ? <EmptyState icon="users" title="No matching clients" /> : filteredClients.map(client => (
-              <div key={client.id} className="card"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontWeight: 800 }}>{client.full_name}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{client.phone} · {client.state || 'Nigeria'}</div><div style={{ color: 'var(--teal-d)', fontSize: 13, fontWeight: 800, marginTop: 4 }}>{client.shipping_mark}</div></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}><div style={{ color: 'var(--muted)', fontSize: 12 }}>{fmtDate(client.created_at)}</div><button className="btn btn-xs btn-secondary" onClick={() => setShowClientLabel(client)}><QrCode size={13} />Label</button></div></div></div>
+              <div key={client.id} className="card"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontWeight: 800 }}>{client.full_name}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{client.phone} · {client.state || 'Nigeria'}</div><div style={{ color: 'var(--teal-d)', fontSize: 13, fontWeight: 800, marginTop: 4 }}>{client.shipping_mark}</div></div><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}><div style={{ color: 'var(--muted)', fontSize: 12 }}>{fmtDate(client.created_at)}</div><div style={{ display: 'flex', gap: 6 }}><button className="btn btn-xs btn-secondary" onClick={() => setShowClientLabel(client)}><QrCode size={13} />Label</button><button className="btn btn-xs btn-secondary" onClick={() => openClientForm(client)}><Pencil size={13} />Edit</button>{isAdmin && <button className="btn btn-xs btn-danger" onClick={() => removeRecord('clients', client.id, 'client')} title="Delete client" aria-label="Delete client"><Trash2 size={13} /></button>}</div></div></div></div>
             ))}
           </>
         )}
@@ -835,6 +897,33 @@ export default function AdminApp() {
         <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
         <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
         <button className="btn btn-navy btn-full" onClick={() => window.print()} style={{ marginTop: 14 }}><Download size={16} />Download / Print Label</button>
+      </Modal>
+
+      <Modal open={showAddClient || !!showEditClient} title={showEditClient ? 'Edit Client' : 'Register Client'} onClose={() => { setShowAddClient(false); setShowEditClient(null) }}>
+        <div className="input-group">
+          <label className="input-label">Full Name</label>
+          <input className="input-field" value={clientForm.full_name} onChange={event => setClientForm(form => ({ ...form, full_name: event.target.value }))} placeholder="Client full name" />
+        </div>
+        <div className="input-group">
+          <label className="input-label">Phone Number</label>
+          <input className="input-field" value={clientForm.phone} onChange={event => setClientForm(form => ({ ...form, phone: event.target.value }))} placeholder="0800 000 0000" />
+        </div>
+        <div className="input-group">
+          <label className="input-label">State</label>
+          <select className="input-field" value={clientForm.state} onChange={event => setClientForm(form => ({ ...form, state: event.target.value }))}>
+            {NIGERIA_STATES.map(state => <option key={state} value={state}>{state}</option>)}
+          </select>
+        </div>
+        <div className="input-group">
+          <label className="input-label">{showEditClient ? 'New Login Password (optional)' : 'Client Login Password'}</label>
+          <input className="input-field" type="password" value={clientForm.password_hash} onChange={event => setClientForm(form => ({ ...form, password_hash: event.target.value }))} placeholder={showEditClient ? 'Leave empty to keep the current password' : 'Set a password'} />
+        </div>
+        <div className="input-group">
+          <label className="input-label">Notes</label>
+          <textarea className="input-field" rows={3} value={clientForm.notes} onChange={event => setClientForm(form => ({ ...form, notes: event.target.value }))} placeholder="Optional notes" />
+        </div>
+        {!showEditClient && <div className="banner banner-info" style={{ marginBottom: 14 }}>The shipping mark is generated automatically after registration.</div>}
+        <button className="btn btn-primary btn-full" onClick={saveClient}>{showEditClient ? 'Save Client Changes' : 'Register Client'}</button>
       </Modal>
 
       <Modal open={showRecordGoods} title="Record New Goods" onClose={() => setShowRecordGoods(false)}>
