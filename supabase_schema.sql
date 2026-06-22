@@ -294,6 +294,57 @@ create table if not exists purchase_requests (
 create index if not exists purchase_requests_client_id_idx on purchase_requests (client_id, created_at desc);
 create index if not exists purchase_requests_status_idx on purchase_requests (status, created_at desc);
 
+-- Client prepaid balance. Balances are derived from the immutable ledger.
+-- Staff use the wallet functions below; direct writes are intentionally blocked.
+create table if not exists wallet_accounts (
+  id uuid primary key default uuid_generate_v4(),
+  client_id uuid not null references clients(id) on delete cascade,
+  currency text not null check (currency in ('NGN', 'RMB')),
+  available_balance numeric(14,2) not null default 0 check (available_balance >= 0),
+  held_balance numeric(14,2) not null default 0 check (held_balance >= 0),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (client_id, currency)
+);
+
+create table if not exists wallet_transactions (
+  id uuid primary key default uuid_generate_v4(),
+  account_id uuid references wallet_accounts(id) on delete set null,
+  client_id uuid not null references clients(id) on delete cascade,
+  currency text not null check (currency in ('NGN', 'RMB')),
+  entry_type text not null check (entry_type in ('cash_topup', 'shipping_charge', 'purchase_charge', 'refund')),
+  direction text not null check (direction in ('credit', 'debit')),
+  amount numeric(14,2) not null check (amount > 0),
+  status text not null default 'pending' check (status in ('pending', 'completed', 'rejected', 'cancelled')),
+  reference_type text,
+  reference_id uuid,
+  description text,
+  cash_reference text,
+  office_location text,
+  recorded_by uuid references profiles(id) on delete set null,
+  approved_by uuid references profiles(id) on delete set null,
+  approved_at timestamptz,
+  balance_after numeric(14,2),
+  created_at timestamptz default now()
+);
+
+-- Created and checked only by Supabase Edge Functions. The browser never
+-- receives a database session row or token hash.
+create table if not exists client_sessions (
+  id uuid primary key default uuid_generate_v4(),
+  client_id uuid not null references clients(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  last_seen_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+
+create index if not exists wallet_accounts_client_id_idx on wallet_accounts (client_id, currency);
+create index if not exists wallet_transactions_client_created_at_idx on wallet_transactions (client_id, created_at desc);
+create index if not exists wallet_transactions_status_created_at_idx on wallet_transactions (status, created_at desc);
+create index if not exists client_sessions_token_hash_idx on client_sessions (token_hash);
+create index if not exists client_sessions_client_expires_idx on client_sessions (client_id, expires_at desc);
+
 -- ── SCAN LOG ──────────────────────────────────────────────
 create table if not exists scan_logs (
   id uuid primary key default uuid_generate_v4(),
@@ -318,6 +369,9 @@ alter table announcements enable row level security;
 alter table suppliers enable row level security;
 alter table messages enable row level security;
 alter table purchase_requests enable row level security;
+alter table wallet_accounts enable row level security;
+alter table wallet_transactions enable row level security;
+alter table client_sessions enable row level security;
 alter table scan_logs enable row level security;
 alter table settings enable row level security;
 
@@ -338,6 +392,8 @@ begin
     'suppliers',
     'messages',
     'purchase_requests',
+    'wallet_accounts',
+    'wallet_transactions',
     'settings'
   ]
   loop
@@ -471,6 +527,16 @@ drop policy if exists "purchase_requests_client_submit" on purchase_requests;
 create policy "purchase_requests_client_submit" on purchase_requests for insert
   with check (true);
 
+-- Prepaid balance: finance users can read the ledger, while every write goes
+-- through the security-definer functions below. Clients read only through the
+-- client-wallet Edge Function after its private session check.
+drop policy if exists "wallet_accounts_finance_read" on wallet_accounts;
+create policy "wallet_accounts_finance_read" on wallet_accounts for select
+  using (has_permission('finance'));
+drop policy if exists "wallet_transactions_finance_read" on wallet_transactions;
+create policy "wallet_transactions_finance_read" on wallet_transactions for select
+  using (has_permission('finance'));
+
 -- SCAN LOG
 drop policy if exists "scan_all" on scan_logs;
 create policy "scan_all" on scan_logs for all
@@ -499,6 +565,181 @@ create trigger expenses_updated_at before update on expenses
 drop trigger if exists purchase_requests_updated_at on purchase_requests;
 create trigger purchase_requests_updated_at before update on purchase_requests
   for each row execute function update_updated_at();
+drop trigger if exists wallet_accounts_updated_at on wallet_accounts;
+create trigger wallet_accounts_updated_at before update on wallet_accounts
+  for each row execute function update_updated_at();
+
+-- Record cash received at the Nigeria office. This stays pending until a
+-- different finance user approves the entry.
+create or replace function public.create_wallet_cash_topup(
+  p_client_id uuid,
+  p_currency text,
+  p_amount numeric,
+  p_cash_reference text default null,
+  p_description text default null,
+  p_office_location text default 'Nigeria office'
+)
+returns wallet_transactions language plpgsql security definer set search_path = public as $$
+declare
+  v_currency text := upper(trim(coalesce(p_currency, '')));
+  v_amount numeric(14,2) := round(coalesce(p_amount, 0), 2);
+  v_transaction wallet_transactions;
+begin
+  if not has_permission('finance') then
+    raise exception 'Finance permission is required';
+  end if;
+  if v_currency not in ('NGN', 'RMB') then
+    raise exception 'Wallet currency must be NGN or RMB';
+  end if;
+  if v_amount <= 0 then
+    raise exception 'Top-up amount must be greater than zero';
+  end if;
+
+  insert into wallet_transactions (
+    client_id, currency, entry_type, direction, amount, status,
+    description, cash_reference, office_location, recorded_by
+  ) values (
+    p_client_id, v_currency, 'cash_topup', 'credit', v_amount, 'pending',
+    nullif(trim(p_description), ''), nullif(trim(p_cash_reference), ''),
+    coalesce(nullif(trim(p_office_location), ''), 'Nigeria office'), auth.uid()
+  ) returning * into v_transaction;
+
+  return v_transaction;
+end;
+$$;
+
+-- Approve the top-up and add it to the balance while the account row is
+-- locked, preventing concurrent approvals from double-crediting the client.
+create or replace function public.approve_wallet_cash_topup(p_transaction_id uuid)
+returns wallet_transactions language plpgsql security definer set search_path = public as $$
+declare
+  v_transaction wallet_transactions;
+  v_account wallet_accounts;
+  v_new_balance numeric(14,2);
+begin
+  if not has_permission('finance') then
+    raise exception 'Finance permission is required';
+  end if;
+
+  select * into v_transaction
+  from wallet_transactions
+  where id = p_transaction_id
+  for update;
+
+  if not found then
+    raise exception 'Wallet transaction not found';
+  end if;
+  if v_transaction.entry_type <> 'cash_topup' or v_transaction.status <> 'pending' then
+    raise exception 'Only pending cash top-ups can be approved';
+  end if;
+  if v_transaction.recorded_by = auth.uid() then
+    raise exception 'A different finance user must approve this cash top-up';
+  end if;
+
+  insert into wallet_accounts (client_id, currency)
+  values (v_transaction.client_id, v_transaction.currency)
+  on conflict (client_id, currency) do nothing;
+
+  select * into v_account
+  from wallet_accounts
+  where client_id = v_transaction.client_id and currency = v_transaction.currency
+  for update;
+
+  v_new_balance := v_account.available_balance + v_transaction.amount;
+  update wallet_accounts
+  set available_balance = v_new_balance
+  where id = v_account.id;
+
+  update wallet_transactions
+  set account_id = v_account.id,
+      status = 'completed',
+      approved_by = auth.uid(),
+      approved_at = now(),
+      balance_after = v_new_balance
+  where id = v_transaction.id
+  returning * into v_transaction;
+
+  return v_transaction;
+end;
+$$;
+
+-- Apply an approved shipping or purchasing debit, or a refund credit.
+-- A debit cannot make the available balance negative.
+create or replace function public.record_wallet_entry(
+  p_client_id uuid,
+  p_currency text,
+  p_amount numeric,
+  p_entry_type text,
+  p_reference_type text default null,
+  p_reference_id uuid default null,
+  p_description text default null
+)
+returns wallet_transactions language plpgsql security definer set search_path = public as $$
+declare
+  v_currency text := upper(trim(coalesce(p_currency, '')));
+  v_amount numeric(14,2) := round(coalesce(p_amount, 0), 2);
+  v_entry_type text := trim(coalesce(p_entry_type, ''));
+  v_direction text;
+  v_account wallet_accounts;
+  v_new_balance numeric(14,2);
+  v_transaction wallet_transactions;
+begin
+  if not has_permission('finance') then
+    raise exception 'Finance permission is required';
+  end if;
+  if v_currency not in ('NGN', 'RMB') then
+    raise exception 'Wallet currency must be NGN or RMB';
+  end if;
+  if v_amount <= 0 then
+    raise exception 'Entry amount must be greater than zero';
+  end if;
+  if v_entry_type not in ('shipping_charge', 'purchase_charge', 'refund') then
+    raise exception 'Wallet entry type is not allowed';
+  end if;
+
+  v_direction := case when v_entry_type = 'refund' then 'credit' else 'debit' end;
+  insert into wallet_accounts (client_id, currency)
+  values (p_client_id, v_currency)
+  on conflict (client_id, currency) do nothing;
+
+  select * into v_account
+  from wallet_accounts
+  where client_id = p_client_id and currency = v_currency
+  for update;
+
+  if v_direction = 'debit' and v_account.available_balance < v_amount then
+    raise exception 'Insufficient available wallet balance';
+  end if;
+
+  v_new_balance := case
+    when v_direction = 'credit' then v_account.available_balance + v_amount
+    else v_account.available_balance - v_amount
+  end;
+
+  update wallet_accounts
+  set available_balance = v_new_balance
+  where id = v_account.id;
+
+  insert into wallet_transactions (
+    account_id, client_id, currency, entry_type, direction, amount, status,
+    reference_type, reference_id, description, recorded_by, approved_by,
+    approved_at, balance_after
+  ) values (
+    v_account.id, p_client_id, v_currency, v_entry_type, v_direction, v_amount, 'completed',
+    nullif(trim(p_reference_type), ''), p_reference_id, nullif(trim(p_description), ''),
+    auth.uid(), auth.uid(), now(), v_new_balance
+  ) returning * into v_transaction;
+
+  return v_transaction;
+end;
+$$;
+
+revoke all on function public.create_wallet_cash_topup(uuid, text, numeric, text, text, text) from public;
+revoke all on function public.approve_wallet_cash_topup(uuid) from public;
+revoke all on function public.record_wallet_entry(uuid, text, numeric, text, text, uuid, text) from public;
+grant execute on function public.create_wallet_cash_topup(uuid, text, numeric, text, text, text) to authenticated;
+grant execute on function public.approve_wallet_cash_topup(uuid) to authenticated;
+grant execute on function public.record_wallet_entry(uuid, text, numeric, text, text, uuid, text) to authenticated;
 
 -- Generate shipping mark: MY-NNN-XXX
 create or replace function generate_shipping_mark(client_name text)

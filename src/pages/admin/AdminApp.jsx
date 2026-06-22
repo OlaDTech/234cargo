@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw, ShoppingCart, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { createClientRecord, supabase, updateClient } from '../../lib/supabase'
+import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, recordWalletEntry, supabase, updateClient } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -24,6 +24,8 @@ export default function AdminApp() {
   const [suppliers, setSuppliers] = useState([])
   const [messages, setMessages] = useState([])
   const [purchaseRequests, setPurchaseRequests] = useState([])
+  const [walletAccounts, setWalletAccounts] = useState([])
+  const [walletTransactions, setWalletTransactions] = useState([])
   const [settings, setSettings] = useState({})
   const [staffList, setStaffList] = useState([])
   const [loading, setLoading] = useState(true)
@@ -49,6 +51,8 @@ export default function AdminApp() {
   const [trackingScanOpen, setTrackingScanOpen] = useState(false)
   const [trackingScanResult, setTrackingScanResult] = useState(null)
   const [showPurchaseEdit, setShowPurchaseEdit] = useState(null)
+  const [showWalletTopUp, setShowWalletTopUp] = useState(false)
+  const [showWalletEntry, setShowWalletEntry] = useState(false)
 
   const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
@@ -59,6 +63,8 @@ export default function AdminApp() {
   const [settingsForm, setSettingsForm] = useState({})
   const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
   const [purchaseEditForm, setPurchaseEditForm] = useState({ status: 'submitted', quoted_amount_rmb: '', team_notes: '', client_message: '' })
+  const [walletTopUpForm, setWalletTopUpForm] = useState({ client_id: '', currency: 'NGN', amount: '', cash_reference: '', description: '', office_location: 'Nigeria office' })
+  const [walletEntryForm, setWalletEntryForm] = useState({ client_id: '', currency: 'NGN', amount: '', entry_type: 'shipping_charge', reference_type: '', reference_id: '', description: '' })
   const [goodsQuery, setGoodsQuery] = useState('')
   const [goodsTypeFilter, setGoodsTypeFilter] = useState('all')
   const [goodsStatusFilter, setGoodsStatusFilter] = useState('all')
@@ -89,6 +95,8 @@ export default function AdminApp() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_accounts' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleReload)
       .subscribe()
@@ -119,12 +127,15 @@ export default function AdminApp() {
       supabase.from('purchase_requests').select('*,client:clients(full_name,phone,shipping_mark)').order('created_at', { ascending: false }),
       supabase.from('settings').select('key,value'),
       supabase.from('profiles').select('*').order('full_name'),
+      hasPermission('finance') ? supabase.from('wallet_accounts').select('*,client:clients(full_name,phone,shipping_mark)').order('updated_at', { ascending: false }) : Promise.resolve({ data: [] }),
+      hasPermission('finance') ? supabase.from('wallet_transactions').select('*,client:clients(full_name,phone,shipping_mark)').order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
     ])
-    const [c, g, cont, rec, exp, ann, sup, msg, purchases, cfg, staff] = results.map(r => r.data || [])
+    const [c, g, cont, rec, exp, ann, sup, msg, purchases, cfg, staff, walletAccountRows, walletTransactionRows] = results.map(r => r.data || [])
     setClients(c); setGoods(g); setContainers(cont); setReceipts(rec)
     setExpenses(exp)
     setAnnouncements(ann); setSuppliers(sup); setMessages(msg); setPurchaseRequests(purchases)
     setStaffList(staff)
+    setWalletAccounts(walletAccountRows); setWalletTransactions(walletTransactionRows)
     const cfgMap = Object.fromEntries(cfg.map(r => [r.key, r.value]))
     setSettings(cfgMap)
     if (syncForms) setSettingsForm(cfgMap)
@@ -390,6 +401,84 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const openWalletTopUp = () => {
+    if (!clients.length) { toast.error('Register a client before recording a cash top-up'); return }
+    setWalletTopUpForm({ client_id: clients[0].id, currency: 'NGN', amount: '', cash_reference: '', description: '', office_location: 'Nigeria office' })
+    setShowWalletTopUp(true)
+  }
+
+  const saveWalletTopUp = async () => {
+    if (!walletTopUpForm.client_id || !walletTopUpForm.amount || !walletTopUpForm.cash_reference.trim()) {
+      toast.error('Choose a client, enter the cash amount, and add the receipt or reference')
+      return
+    }
+    try {
+      await createWalletCashTopup({
+        clientId: walletTopUpForm.client_id,
+        currency: walletTopUpForm.currency,
+        amount: Number(walletTopUpForm.amount),
+        cashReference: walletTopUpForm.cash_reference.trim(),
+        description: walletTopUpForm.description.trim(),
+        officeLocation: walletTopUpForm.office_location.trim(),
+      })
+      toast.success('Cash top-up recorded for verification')
+      setShowWalletTopUp(false)
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not record the cash top-up')
+    }
+  }
+
+  const approveWalletTopUp = async transaction => {
+    try {
+      const approved = await approveWalletCashTopup(transaction.id)
+      await supabase.from('messages').insert({
+        client_id: approved.client_id,
+        sender: isAdmin ? 'admin' : 'staff',
+        message: `Your ${approved.currency} wallet top-up of ${formatMoney(approved.amount, approved.currency)} has been verified and is now available to use.`,
+      })
+      toast.success('Cash top-up approved and added to the client balance')
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not approve this cash top-up')
+    }
+  }
+
+  const openWalletEntry = account => {
+    if (!account?.client_id) { toast.error('Select a client wallet first'); return }
+    setWalletEntryForm({ client_id: account.client_id, currency: account.currency, amount: '', entry_type: 'shipping_charge', reference_type: '', reference_id: '', description: '' })
+    setShowWalletEntry(true)
+  }
+
+  const saveWalletEntry = async () => {
+    if (!walletEntryForm.client_id || !walletEntryForm.amount || !walletEntryForm.description.trim()) {
+      toast.error('Enter the amount and a clear description for this balance entry')
+      return
+    }
+    try {
+      const entry = await recordWalletEntry({
+        clientId: walletEntryForm.client_id,
+        currency: walletEntryForm.currency,
+        amount: Number(walletEntryForm.amount),
+        entryType: walletEntryForm.entry_type,
+        referenceType: walletEntryForm.reference_type.trim(),
+        referenceId: null,
+        description: walletEntryForm.description.trim(),
+      })
+      const action = walletEntryForm.entry_type === 'refund' ? 'A refund was added to' : 'A charge was made to'
+      await supabase.from('messages').insert({
+        client_id: entry.client_id,
+        sender: isAdmin ? 'admin' : 'staff',
+        message: `${action} your ${entry.currency} wallet: ${formatMoney(entry.amount, entry.currency)}. ${entry.description || ''}`.trim(),
+      })
+      toast.success(walletEntryForm.entry_type === 'refund' ? 'Wallet refund added' : 'Wallet charge recorded')
+      setShowWalletEntry(false)
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not record the wallet entry')
+    }
+  }
+
   const saveEditedGoods = async () => {
     if (!showEditGoods?.description?.trim()) { toast.error('Description is required'); return }
     const payload = {
@@ -459,16 +548,17 @@ export default function AdminApp() {
     hasPermission('goods') && { id: 'goods', label: 'Goods', Icon: Package },
     hasPermission('scan') && { id: 'tracking', label: 'Track', Icon: Barcode },
     (hasPermission('finance') || hasPermission('receipts')) && { id: 'finance', label: hasPermission('finance') ? 'Finance' : 'Receipts', Icon: Wallet },
-    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages') || hasPermission('purchases')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
+    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages') || hasPermission('purchases') || hasPermission('finance')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
   ].filter(Boolean)
   const moreTabIds = [
     hasPermission('clients') && 'clients',
     (hasPermission('goods') || hasPermission('containers')) && 'containers',
     hasPermission('messages') && 'messages',
     hasPermission('purchases') && 'purchases',
+    hasPermission('finance') && 'wallet',
     isAdmin && 'settings',
   ].filter(Boolean)
-  const activeNav = ['clients', 'containers', 'messages', 'purchases', 'settings'].includes(tab) ? 'more' : tab
+  const activeNav = ['clients', 'containers', 'messages', 'purchases', 'wallet', 'settings'].includes(tab) ? 'more' : tab
 
   useEffect(() => {
     const availableTabIds = [...tabs.map(item => item.id), ...moreTabIds]
@@ -525,7 +615,7 @@ export default function AdminApp() {
 
   return (
     <div className="app-shell">
-      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
+      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'wallet' ? 'Client Prepaid Balances' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data" style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, cursor: refreshing ? 'wait' : 'pointer' }}>
@@ -712,6 +802,7 @@ export default function AdminApp() {
               (hasPermission('goods') || hasPermission('containers')) && { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
               hasPermission('messages') && { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
               hasPermission('purchases') && { id: 'purchases', title: 'Purchase Requests', text: `${stats.purchases || 0} open request${stats.purchases === 1 ? '' : 's'} from clients.`, Icon: ShoppingCart },
+              hasPermission('finance') && { id: 'wallet', title: 'Client Prepaid Balances', text: `${walletTransactions.filter(entry => entry.status === 'pending').length} cash top-up${walletTransactions.filter(entry => entry.status === 'pending').length === 1 ? '' : 's'} awaiting verification.`, Icon: Wallet },
               isAdmin && { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
             ].filter(Boolean).map(item => (
               <button key={item.id} className="more-menu-item" onClick={() => setTab(item.id)}>
@@ -760,6 +851,46 @@ export default function AdminApp() {
                 </div>
               )
             })}
+          </>
+        )}
+
+        {/* CLIENT PREPAID BALANCES */}
+        {tab === 'wallet' && hasPermission('finance') && (
+          <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
+            <SectionHeader title="Client Prepaid Balances" action={<button className="btn btn-sm btn-primary" onClick={openWalletTopUp}><Wallet size={14} />Cash Top-Up</button>} />
+            <div className="banner banner-info" style={{ marginBottom: 16 }}>Cash payments are recorded first, then a different finance user verifies them. Balances can only be charged through the ledger below.</div>
+
+            <SectionHeader title="Cash Top-Ups Awaiting Verification" />
+            {walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length === 0 ? <EmptyState icon="receipt" title="No cash top-ups awaiting verification" text="New cash deposits will appear here until a second finance user approves them." /> : walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').map(entry => (
+              <div key={entry.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                  <div><div style={{ fontWeight: 800 }}>{entry.client?.full_name || 'Client'}</div><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>{entry.client?.shipping_mark} · {fmtDateTime(entry.created_at)}</div></div>
+                  <strong style={{ color: 'var(--green)', whiteSpace: 'nowrap' }}>+ {formatMoney(entry.amount, entry.currency)}</strong>
+                </div>
+                <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10 }}>Cash reference: {entry.cash_reference || 'Not recorded'}{entry.description ? ` · ${entry.description}` : ''}</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}><button className="btn btn-sm btn-primary" onClick={() => approveWalletTopUp(entry)} disabled={entry.recorded_by === profile?.id} title={entry.recorded_by === profile?.id ? 'Another finance user must verify this cash top-up' : 'Approve cash top-up'}><CheckCircle2 size={14} />Approve</button></div>
+              </div>
+            ))}
+
+            <SectionHeader title="Available Client Balances" />
+            {walletAccounts.length === 0 ? <EmptyState icon="receipt" title="No verified wallet balances" text="Approve a cash top-up to create a client Naira or RMB balance." /> : walletAccounts.map(account => (
+              <div key={account.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                  <div><div style={{ fontWeight: 800 }}>{account.client?.full_name || 'Client'}</div><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>{account.client?.shipping_mark} · {account.currency} wallet</div></div>
+                  <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 800, color: 'var(--teal-d)', fontSize: 17 }}>{formatMoney(account.available_balance, account.currency)}</div><div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>Available</div></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 13 }}><button className="btn btn-sm btn-secondary" onClick={() => openWalletEntry(account)}><Wallet size={14} />Charge / Refund</button></div>
+              </div>
+            ))}
+
+            <SectionHeader title="Recent Wallet Ledger" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-wallet-ledger', walletTransactions.map(entry => ({ date: entry.created_at, client: entry.client?.full_name, shipping_mark: entry.client?.shipping_mark, currency: entry.currency, type: entry.entry_type, direction: entry.direction, amount: entry.amount, status: entry.status, balance_after: entry.balance_after, description: entry.description })))}><Download size={13} />Export</button>} />
+            {walletTransactions.length === 0 ? <EmptyState icon="receipt" title="No wallet entries yet" text="Top-ups, shipping charges, purchase charges, and refunds will appear here." /> : walletTransactions.slice(0, 40).map(entry => (
+              <div key={entry.id} className="card" style={{ padding: '13px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}><div><div style={{ fontWeight: 700, fontSize: 14 }}>{entry.entry_type.replace('_', ' ')}</div><div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 3 }}>{entry.client?.full_name} · {fmtDateTime(entry.created_at)}</div></div><div style={{ textAlign: 'right' }}><strong style={{ color: entry.direction === 'credit' ? 'var(--green)' : 'var(--red)', fontSize: 13 }}>{entry.direction === 'credit' ? '+' : '-'} {formatMoney(entry.amount, entry.currency)}</strong><div style={{ color: entry.status === 'completed' ? 'var(--green)' : 'var(--amber)', fontSize: 11, marginTop: 3 }}>{entry.status === 'pending' ? 'Awaiting verification' : entry.status}</div></div></div>
+                {entry.description && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>{entry.description}</div>}
+              </div>
+            ))}
           </>
         )}
 
@@ -1039,6 +1170,38 @@ export default function AdminApp() {
             <button className="btn btn-primary btn-full" onClick={savePurchaseRequest}><ShoppingCart size={16} />Save Purchase Update</button>
           </>
         )}
+      </Modal>
+
+      <Modal open={showWalletTopUp} title="Record Cash Top-Up" onClose={() => setShowWalletTopUp(false)}>
+        <div className="banner banner-info" style={{ marginBottom: 14 }}>This credit will remain pending until a different finance user verifies the cash payment.</div>
+        <div className="input-group">
+          <label className="input-label">Client</label>
+          <select className="input-field" value={walletTopUpForm.client_id} onChange={event => setWalletTopUpForm(form => ({ ...form, client_id: event.target.value }))}>
+            {clients.map(client => <option key={client.id} value={client.id}>{client.full_name} · {client.shipping_mark}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr)', gap: 10 }}>
+          <div className="input-group"><label className="input-label">Currency</label><select className="input-field" value={walletTopUpForm.currency} onChange={event => setWalletTopUpForm(form => ({ ...form, currency: event.target.value }))}><option value="NGN">NGN</option><option value="RMB">RMB</option></select></div>
+          <div className="input-group"><label className="input-label">Cash Amount</label><input className="input-field" type="number" min="0.01" step="0.01" inputMode="decimal" value={walletTopUpForm.amount} onChange={event => setWalletTopUpForm(form => ({ ...form, amount: event.target.value }))} placeholder="0.00" /></div>
+        </div>
+        <div className="input-group"><label className="input-label">Cash Receipt or Reference</label><input className="input-field" value={walletTopUpForm.cash_reference} onChange={event => setWalletTopUpForm(form => ({ ...form, cash_reference: event.target.value }))} placeholder="For example: CASH-2026-001" /></div>
+        <div className="input-group"><label className="input-label">Office</label><input className="input-field" value={walletTopUpForm.office_location} onChange={event => setWalletTopUpForm(form => ({ ...form, office_location: event.target.value }))} /></div>
+        <div className="input-group"><label className="input-label">Note <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label><textarea className="input-field" rows="3" value={walletTopUpForm.description} onChange={event => setWalletTopUpForm(form => ({ ...form, description: event.target.value }))} placeholder="Who received the cash, purpose, or other confirmation." /></div>
+        <button className="btn btn-primary btn-full" onClick={saveWalletTopUp}><Wallet size={16} />Record Pending Top-Up</button>
+      </Modal>
+
+      <Modal open={showWalletEntry} title="Charge or Refund Balance" onClose={() => setShowWalletEntry(false)}>
+        {showWalletEntry && <>
+          <div className="banner banner-info" style={{ marginBottom: 14 }}>{clients.find(client => client.id === walletEntryForm.client_id)?.full_name || 'Client'} · {walletEntryForm.currency} wallet</div>
+          <div className="input-group"><label className="input-label">Entry Type</label><select className="input-field" value={walletEntryForm.entry_type} onChange={event => setWalletEntryForm(form => ({ ...form, entry_type: event.target.value }))}><option value="shipping_charge">Shipping charge</option><option value="purchase_charge">Purchase charge</option><option value="refund">Refund / credit</option></select></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr)', gap: 10 }}>
+            <div className="input-group"><label className="input-label">Currency</label><select className="input-field" value={walletEntryForm.currency} onChange={event => setWalletEntryForm(form => ({ ...form, currency: event.target.value }))}><option value="NGN">NGN</option><option value="RMB">RMB</option></select></div>
+            <div className="input-group"><label className="input-label">Amount</label><input className="input-field" type="number" min="0.01" step="0.01" inputMode="decimal" value={walletEntryForm.amount} onChange={event => setWalletEntryForm(form => ({ ...form, amount: event.target.value }))} placeholder="0.00" /></div>
+          </div>
+          <div className="input-group"><label className="input-label">Reference Type <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label><input className="input-field" value={walletEntryForm.reference_type} onChange={event => setWalletEntryForm(form => ({ ...form, reference_type: event.target.value }))} placeholder="For example: receipt or purchase request" /></div>
+          <div className="input-group"><label className="input-label">Description</label><textarea className="input-field" rows="3" value={walletEntryForm.description} onChange={event => setWalletEntryForm(form => ({ ...form, description: event.target.value }))} placeholder="Explain exactly what this charge or refund is for." /></div>
+          <button className="btn btn-primary btn-full" onClick={saveWalletEntry}><Wallet size={16} />{walletEntryForm.entry_type === 'refund' ? 'Add Refund' : 'Record Charge'}</button>
+        </>}
       </Modal>
 
       <ScannerModal open={clientScanOpen} onClose={() => setClientScanOpen(false)} onResult={searchClientFromScan} title="Scan Client Shipping Label" />

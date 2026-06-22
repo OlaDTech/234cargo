@@ -1,4 +1,4 @@
-# OceanAir Logistics — Sea & Air Freight Web App
+# 234CARGO— Sea & Air Freight Web App
 
 A mobile-first logistics platform for client, staff, and admin portals — built with React, Vite, and Supabase. Deploys as a static site to Cloudflare Pages.
 
@@ -93,7 +93,30 @@ The included `_redirects` file routes all paths to `index.html` so client-side r
 
 **Warehouse settings:** Admin-only. Editing the China warehouse name/address/phone or company name under Settings updates the data every shipping label reads from — every client's label reflects the change immediately, with no per-client editing needed.
 
-## 7. Hardening before going live
+## 7. Client prepaid balance
+
+The client prepaid balance is intended for cash received at the Nigeria office. It is a ledger, not a staff-editable number:
+
+1. A finance user opens **More -> Client Prepaid Balances** and records the client's cash payment with a receipt/reference.
+2. The credit stays **pending** until a different finance user verifies it.
+3. Verification adds the amount to the client's separate **NGN** or **RMB** balance.
+4. Finance can record a shipping charge, purchase charge, or refund. A charge cannot take the balance below zero.
+5. The client sees balances and activity from **More -> Prepaid Balance**. The balance view refreshes automatically every minute while open and also has a refresh button.
+
+### Deploy the protected client balance functions
+
+Run the updated `supabase_schema.sql` first. Then deploy the two Edge Functions included in `supabase/functions/`. They use the platform-provided service-role key internally, so do **not** put that key in Cloudflare or any browser environment variable.
+
+```bash
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase functions deploy client-login --no-verify-jwt
+npx supabase functions deploy client-wallet --no-verify-jwt
+```
+
+After the functions are live, clients should sign out and sign in again once. That creates the private session needed to read their balance. The wallet data has no public database read policy; it is returned only by the `client-wallet` function after it checks that session.
+
+## 8. Hardening before going live
 
 The client portal intentionally skips Supabase Auth (clients log in with phone/shipping mark + password, not email) to match the brief. To make that work, several RLS policies in `supabase_schema.sql` allow public (`anon`) read access, with the app enforcing per-client filtering in the UI rather than the database. Read the security note at the top of `supabase_schema.sql` for two ways to close this gap — the short version: move client login behind a Supabase Edge Function that issues a scoped JWT, and hash passwords with bcrypt instead of storing them in plaintext as the demo schema does.
 

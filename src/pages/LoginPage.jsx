@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { supabase } from '../lib/supabase'
+import { clientSignIn, supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { Icons } from '../components/Icons'
 
@@ -28,12 +28,9 @@ export default function LoginPage() {
     if (!identifier.trim() || !password.trim()) { setError('Please fill in all fields'); return }
     setLoading(true); setError('')
     try {
-      const { data, error: qErr } = await supabase.from('clients').select('*')
-        .or(`phone.eq.${identifier.trim()},shipping_mark.eq.${identifier.trim()}`).single()
-      if (qErr || !data) throw new Error('Client not found. Check your phone number or shipping mark.')
-      if (data.password_hash !== password.trim()) throw new Error('Incorrect password.')
-      signInClient(data)
-      toast.success(`Welcome back, ${data.full_name.split(' ')[0]}!`)
+      const session = await clientSignIn(identifier, password)
+      signInClient(session)
+      toast.success(`Welcome back, ${session.client.full_name.split(' ')[0]}!`)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }

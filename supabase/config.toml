@@ -1,0 +1,5 @@
+[functions.client-login]
+verify_jwt = false
+
+[functions.client-wallet]
+verify_jwt = false

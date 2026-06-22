@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)       // Supabase auth user (admin/staff)
   const [profile, setProfile] = useState(null) // profiles row
   const [clientUser, setClientUser] = useState(null) // clients row (client portal)
+  const [clientSessionToken, setClientSessionToken] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const loadStaffProfile = async (authUser) => {
@@ -44,7 +45,11 @@ export function AuthProvider({ children }) {
     // Restore client session from localStorage
     const saved = localStorage.getItem('oa_client')
     if (saved) {
-      try { setClientUser(JSON.parse(saved)) } catch {}
+      try {
+        const parsed = JSON.parse(saved)
+        setClientUser(parsed.client || parsed)
+        setClientSessionToken(parsed.sessionToken || null)
+      } catch {}
     }
 
     // Check Supabase auth session
@@ -91,14 +96,18 @@ export function AuthProvider({ children }) {
     return loadStaffProfile(data.user)
   }
 
-  const signInClient = (clientData) => {
-    setClientUser(clientData)
-    localStorage.setItem('oa_client', JSON.stringify(clientData))
+  const signInClient = (clientSession) => {
+    const client = clientSession?.client || clientSession
+    const sessionToken = clientSession?.sessionToken || null
+    setClientUser(client)
+    setClientSessionToken(sessionToken)
+    localStorage.setItem('oa_client', JSON.stringify({ client, sessionToken, expiresAt: clientSession?.expiresAt || null }))
   }
 
   const signOut = async () => {
     if (clientUser) {
       setClientUser(null)
+      setClientSessionToken(null)
       localStorage.removeItem('oa_client')
     } else {
       await supabase.auth.signOut()
@@ -115,7 +124,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, clientUser,
+      user, profile, clientUser, clientSessionToken,
       loading, isAdmin, isStaff, isWarehouseManager, isClient,
       hasPermission,
       signInStaff, signInClient, signOut, refreshStaffProfile,

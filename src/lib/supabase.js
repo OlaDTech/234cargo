@@ -46,23 +46,86 @@ export async function getCurrentProfile(userId) {
 }
 
 // ── Client auth ──────────────────────────────────────────────
-// Clients log in with phone/shipping_mark + a plaintext password column.
-// NOTE: For production, swap password_hash comparison for a Supabase
-// Edge Function that checks a bcrypt hash server-side instead of
-// comparing plaintext client-side (see README "Hardening" section).
-
 export async function clientSignIn(identifier, password) {
-  const { data, error } = await supabase
+  const credentials = { identifier: String(identifier || '').trim(), password: String(password || '') }
+  const { data: secureData, error: secureError } = await supabase.functions.invoke('client-login', {
+    body: credentials,
+  })
+
+  if (!secureError && secureData?.client && secureData?.session_token) {
+    return {
+      client: secureData.client,
+      sessionToken: secureData.session_token,
+      expiresAt: secureData.expires_at,
+    }
+  }
+
+  // Keeps the existing portal available until the Edge Function is deployed.
+  // The wallet itself never uses this fallback because it requires sessionToken.
+  let { data, error } = await supabase
     .from('clients')
     .select('*')
-    .or(`phone.eq.${identifier},shipping_mark.eq.${identifier}`)
-    .single()
-  if (error || !data) throw new Error('Client not found')
-  if (data.password_hash !== password) throw new Error('Incorrect password')
+    .eq('phone', credentials.identifier)
+    .maybeSingle()
+  if (!data && !error) {
+    const byMark = await supabase
+      .from('clients')
+      .select('*')
+      .eq('shipping_mark', credentials.identifier)
+      .maybeSingle()
+    data = byMark.data
+    error = byMark.error
+  }
+  if (error || !data) throw new Error('Client not found. Check your phone number or shipping mark.')
+  if (data.password_hash !== credentials.password) throw new Error('Incorrect password.')
+  const { password_hash: _passwordHash, ...client } = data
+  return { client, sessionToken: null, expiresAt: null }
+}
+
+export async function getClientWallet(sessionToken) {
+  if (!sessionToken) throw new Error('Sign out and sign back in to view your secure prepaid balance.')
+  const { data, error } = await supabase.functions.invoke('client-wallet', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  })
+  if (error) throw new Error('Could not load your prepaid balance. Please sign in again if the problem continues.')
   return data
 }
 
 // ── Settings ───────────────────────────────────────────────
+
+export async function createWalletCashTopup(payload) {
+  const { data, error } = await supabase.rpc('create_wallet_cash_topup', {
+    p_client_id: payload.clientId,
+    p_currency: payload.currency,
+    p_amount: payload.amount,
+    p_cash_reference: payload.cashReference || null,
+    p_description: payload.description || null,
+    p_office_location: payload.officeLocation || 'Nigeria office',
+  })
+  if (error) throw error
+  return data
+}
+
+export async function approveWalletCashTopup(transactionId) {
+  const { data, error } = await supabase.rpc('approve_wallet_cash_topup', { p_transaction_id: transactionId })
+  if (error) throw error
+  return data
+}
+
+export async function recordWalletEntry(payload) {
+  const { data, error } = await supabase.rpc('record_wallet_entry', {
+    p_client_id: payload.clientId,
+    p_currency: payload.currency,
+    p_amount: payload.amount,
+    p_entry_type: payload.entryType,
+    p_reference_type: payload.referenceType || null,
+    p_reference_id: payload.referenceId || null,
+    p_description: payload.description || null,
+  })
+  if (error) throw error
+  return data
+}
 
 export async function getSettings() {
   const { data, error } = await supabase.from('settings').select('key, value')

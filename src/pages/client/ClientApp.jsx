@@ -1,14 +1,23 @@
-import { useState, useEffect, useRef } from 'react'
-import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { supabase } from '../../lib/supabase'
-import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo } from '../../components/UI'
+import { getClientWallet, supabase } from '../../lib/supabase'
+import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
 import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
 
+const WALLET_ENTRY_LABELS = {
+  cash_topup: 'Cash top-up',
+  shipping_charge: 'Shipping charge',
+  purchase_charge: 'Purchase charge',
+  refund: 'Refund',
+}
+
+const walletBalanceFor = (wallet, currency) => wallet?.balances?.find(balance => balance.currency === currency)?.available_balance || 0
+
 export default function ClientApp() {
-  const { clientUser, signOut } = useAuth()
+  const { clientUser, clientSessionToken, signOut } = useAuth()
   const [tab, setTab] = useState('home')
   const [goods, setGoods] = useState([])
   const [announcements, setAnnouncements] = useState([])
@@ -25,10 +34,42 @@ export default function ClientApp() {
   const [labelShipmentType, setLabelShipmentType] = useState('sea')
   const [purchaseForm, setPurchaseForm] = useState(EMPTY_PURCHASE_REQUEST)
   const [submittingPurchase, setSubmittingPurchase] = useState(false)
+  const [wallet, setWallet] = useState(null)
+  const [walletLoading, setWalletLoading] = useState(false)
+  const [walletError, setWalletError] = useState('')
   const reloadTimer = useRef(null)
   const chatListRef = useRef(null)
 
+  const loadWallet = useCallback(async () => {
+    if (!clientSessionToken) {
+      setWallet(null)
+      setWalletError('Sign out and sign in again to activate your secure prepaid balance.')
+      return false
+    }
+    setWalletLoading(true)
+    try {
+      const data = await getClientWallet(clientSessionToken)
+      setWallet(data)
+      setWalletError('')
+      return true
+    } catch (error) {
+      setWallet(null)
+      setWalletError(error.message || 'Could not load your prepaid balance.')
+      return false
+    } finally {
+      setWalletLoading(false)
+    }
+  }, [clientSessionToken])
+
   useEffect(() => { loadAll() }, [clientUser.id])
+
+  useEffect(() => { loadWallet() }, [loadWallet])
+
+  useEffect(() => {
+    if (tab !== 'wallet' || !clientSessionToken) return undefined
+    const interval = setInterval(loadWallet, 60000)
+    return () => clearInterval(interval)
+  }, [tab, clientSessionToken, loadWallet])
 
   useEffect(() => {
     const scheduleReload = () => {
@@ -87,6 +128,10 @@ export default function ClientApp() {
     toast.success('Data refreshed')
   }
 
+  const refreshWallet = async () => {
+    if (await loadWallet()) toast.success('Prepaid balance refreshed')
+  }
+
   const copyMessage = async text => {
     try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
     catch { toast.error('Could not copy this message') }
@@ -133,7 +178,7 @@ export default function ClientApp() {
     { id: 'chat', label: 'Messages', Icon: MessageCircle },
     { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
-  const activeNav = ['label', 'suppliers', 'purchase'].includes(tab) ? 'more' : tab
+  const activeNav = ['label', 'suppliers', 'purchase', 'wallet'].includes(tab) ? 'more' : tab
 
   const inWarehouse = goods.filter(g => g.status === 'in_warehouse').length
   const inTransit = goods.filter(g => g.status === 'in_transit').length
@@ -174,6 +219,12 @@ export default function ClientApp() {
             <button type="button" className="client-purchase-card" onClick={() => setTab('purchase')}>
               <span className="client-purchase-icon"><ShoppingCart size={21} /></span>
               <span className="client-purchase-copy"><small>Shopping Assistance</small><strong>Buy From China</strong><em>Send a 1688, Taobao, or Pinduoduo link. We buy and ship it for you.</em></span>
+              <ArrowRight size={19} />
+            </button>
+
+            <button type="button" className="client-wallet-card" onClick={() => setTab('wallet')}>
+              <span className="client-wallet-icon"><Wallet size={21} /></span>
+              <span className="client-wallet-copy"><small>Prepaid Balance</small><strong>{walletLoading ? 'Loading balance...' : wallet ? `${formatMoney(walletBalanceFor(wallet, 'NGN'), 'NGN')} / ${formatMoney(walletBalanceFor(wallet, 'RMB'), 'RMB')}` : 'View prepaid balance'}</strong><em>Top up in cash at our Nigeria office. Credits are verified before use.</em></span>
               <ArrowRight size={19} />
             </button>
 
@@ -245,6 +296,7 @@ export default function ClientApp() {
           <>
             <SectionHeader title="More" />
             {[
+              { id: 'wallet', title: 'Prepaid Balance', text: 'View your Naira and RMB balance, credits, and charges.', Icon: Wallet },
               { id: 'purchase', title: 'Buy for Me', text: 'Send a 1688, Taobao or Pinduoduo link. We buy and ship it for you.', Icon: ShoppingCart },
               { id: 'label', title: 'Shipping Label', text: 'View, print or share your shipping mark label.', Icon: Tag },
               { id: 'suppliers', title: 'Supplier Directory', text: 'Browse the approved supplier directory.', Icon: ShoppingBag },
@@ -253,6 +305,34 @@ export default function ClientApp() {
                 <span className="more-menu-icon"><item.Icon size={21} /></span><span><strong>{item.title}</strong><small>{item.text}</small></span><span className="more-menu-arrow">›</span>
               </button>
             ))}
+          </>
+        )}
+
+        {/* PREPAID BALANCE */}
+        {tab === 'wallet' && (
+          <>
+            <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
+            <SectionHeader title="Prepaid Balance" action={<button className="btn btn-xs btn-secondary" onClick={refreshWallet} disabled={walletLoading} title="Refresh prepaid balance"><RefreshCw size={13} className={walletLoading ? 'spin' : ''} />Refresh</button>} />
+            <div className="banner banner-info" style={{ marginBottom: 16 }}>Pay cash at our Nigeria office with your shipping mark. Your balance becomes available after a finance team member verifies the payment.</div>
+            {walletLoading && !wallet ? <SkeletonList n={3} /> : walletError ? (
+              <div className="card client-wallet-empty"><Wallet size={24} /><strong>Secure balance unavailable</strong><p>{walletError}</p><button className="btn btn-primary" onClick={signOut}>Sign Out</button></div>
+            ) : (
+              <>
+                <div className="wallet-balance-grid">
+                  {['NGN', 'RMB'].map(currency => <div key={currency} className="wallet-balance-card"><span>{currency === 'NGN' ? 'Naira balance' : 'RMB balance'}</span><strong>{formatMoney(walletBalanceFor(wallet, currency), currency)}</strong><small>Available to use</small></div>)}
+                </div>
+                <SectionHeader title="Balance Activity" />
+                {wallet?.transactions?.length ? wallet.transactions.map(transaction => {
+                  const isCredit = transaction.direction === 'credit'
+                  const statusLabel = transaction.status === 'pending' ? 'Awaiting verification' : transaction.status === 'completed' ? 'Completed' : transaction.status
+                  return <div key={transaction.id} className="client-wallet-transaction">
+                    <span className={`client-wallet-direction ${isCredit ? 'credit' : 'debit'}`}>{isCredit ? '+' : '-'}</span>
+                    <span className="client-wallet-transaction-copy"><strong>{WALLET_ENTRY_LABELS[transaction.entry_type] || 'Balance activity'}</strong><small>{transaction.description || statusLabel} · {fmtDate(transaction.created_at)}</small></span>
+                    <span className="client-wallet-transaction-amount"><strong className={isCredit ? 'credit' : 'debit'}>{isCredit ? '+' : '-'}{formatMoney(transaction.amount, transaction.currency)}</strong><small>{statusLabel}</small></span>
+                  </div>
+                }) : <EmptyState icon="receipt" title="No balance activity yet" text="Verified cash top-ups and shipping or purchase charges will appear here." />}
+              </>
+            )}
           </>
         )}
 
