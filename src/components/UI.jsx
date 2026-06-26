@@ -12,7 +12,7 @@ const STATUS_META = {
   in_warehouse: { label: 'In Warehouse', cls: 'pill-warehouse', Icon: Icons.warehouse, color: 'var(--blue)' },
   in_transit:   { label: 'In Transit',   cls: 'pill-transit',   Icon: Icons.ship,      color: 'var(--amber)' },
   delivered:    { label: 'Delivered',    cls: 'pill-delivered',  Icon: Icons.check,     color: 'var(--green)' },
-  loading:      { label: 'Loading',      cls: 'pill-loading',    Icon: Icons.box,       color: 'var(--violet)' },
+  loading:      { label: 'Loading',      cls: 'pill-loading',    Icon: Icons.box,       color: 'var(--blue)' },
 }
 // Backward-compatible STATUS export (keeps .label/.cls; adds .Icon)
 export const STATUS = STATUS_META

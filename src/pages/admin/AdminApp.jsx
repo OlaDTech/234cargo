@@ -639,6 +639,44 @@ export default function AdminApp() {
     (isAdmin || hasPermission('finance')) && { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
     (isAdmin || hasPermission('finance')) && { label: 'Expenses', value: formatMoney(stats.totalExpenses), Icon: FileText, color: 'var(--red)' },
   ].filter(Boolean)
+  const adminOpsStats = [
+    (isAdmin || hasPermission('clients')) && { label: 'Clients', value: stats.clients || 0, Icon: Users, color: 'var(--teal-d)', bg: 'var(--teal-l)' },
+    (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'In transit', value: stats.inTransit || 0, Icon: Ship, color: 'var(--amber)', bg: 'var(--amber-bg)' },
+    (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'Delivered', value: stats.delivered || 0, Icon: CheckCircle2, color: 'var(--green)', bg: 'var(--green-bg)' },
+    (isAdmin || hasPermission('purchases')) && { label: 'Open requests', value: stats.purchases || 0, Icon: ShoppingCart, color: 'var(--violet)', bg: 'var(--violet-bg)' },
+  ].filter(Boolean)
+  const featuredContainer = containers.find(container => container.status === 'in_transit')
+    || containers.find(container => container.status === 'loading')
+    || containers[0]
+  const featuredContainerGoods = featuredContainer ? goods.filter(item => item.container_id === featuredContainer.id) : []
+  const featuredContainerClients = new Set(featuredContainerGoods.map(item => item.client_id).filter(Boolean)).size
+  const featuredContainerCbm = featuredContainerGoods.reduce((sum, item) => sum + (parseFloat(item.cbm) || 0), 0)
+  const splitRoute = route => String(route || 'China -> Nigeria')
+    .replaceAll(String.fromCharCode(8594), '->')
+    .replaceAll('â†’', '->')
+    .split(/->|-/)
+    .map(part => part.trim())
+    .filter(Boolean)
+  const routeParts = splitRoute(featuredContainer?.route)
+  const routeOrigin = routeParts[0] || 'China'
+  const routeDestination = routeParts[routeParts.length - 1] || 'Nigeria'
+  const calculateVoyagePct = container => {
+    if (!container) return 0
+    if (container.status === 'delivered') return 100
+    if (container.status === 'loading') return 12
+    const start = container.departure_date ? new Date(container.departure_date).getTime() : null
+    const end = container.arrival_date ? new Date(container.arrival_date).getTime() : null
+    if (!start || !end || end <= start) return container.status === 'in_transit' ? 48 : 12
+    return Math.max(12, Math.min(92, Math.round(((Date.now() - start) / (end - start)) * 100)))
+  }
+  const voyagePct = calculateVoyagePct(featuredContainer)
+  const paidIncome = Number(stats.paidIncome) || 0
+  const totalExpenses = Number(stats.totalExpenses) || 0
+  const unpaidReceipts = receipts.filter(receipt => receipt.status === 'unpaid').reduce((sum, receipt) => sum + (parseFloat(receipt.total) || 0), 0)
+  const cashTotal = Math.max(1, paidIncome + totalExpenses + unpaidReceipts)
+  const walletNgnTotal = walletAccounts.filter(account => account.currency === 'NGN').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
+  const walletRmbTotal = walletAccounts.filter(account => account.currency === 'RMB').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
+  const pendingWalletTopUps = walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length
 
   return (
     <div className="app-shell">
@@ -665,8 +703,63 @@ export default function AdminApp() {
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>{format(new Date(), 'EEEE, d MMMM yyyy')}</div>
             </div>
 
+            {featuredContainer && (
+              <div className="voyage-card">
+                <div className="voyage-topline">
+                  <div className="voyage-kicker"><Ship size={15} color="var(--teal)" />Shipment in transit</div>
+                  <span className="voyage-eta">{featuredContainer.arrival_date ? `ETA ${fmtDate(featuredContainer.arrival_date)}` : featuredContainer.status.replace('_', ' ')}</span>
+                </div>
+                <div className="voyage-title">{featuredContainer.container_no}</div>
+                <div className="voyage-meta">{featuredContainerGoods.length} package{featuredContainerGoods.length === 1 ? '' : 's'} · {featuredContainer.type} · {featuredContainer.route}</div>
+                <div className="voyage-track">
+                  <div className="voyage-line" />
+                  <div className="voyage-line-fill" style={{ width: `${voyagePct}%` }} />
+                  <span className="voyage-port voyage-port-start" />
+                  <span className="voyage-port voyage-port-end" />
+                  <span className="voyage-ship" style={{ left: `${voyagePct}%` }}><Ship size={13} /></span>
+                </div>
+                <div className="voyage-route"><span>{routeOrigin}</span><span>{routeDestination}</span></div>
+                <div className="voyage-metrics">
+                  <div className="voyage-metric"><strong>{featuredContainerGoods.length}</strong><span>packages</span></div>
+                  <div className="voyage-metric"><strong>{featuredContainerCbm.toFixed(2)}</strong><span>CBM loaded</span></div>
+                  <div className="voyage-metric"><strong>{featuredContainerClients}</strong><span>clients</span></div>
+                </div>
+              </div>
+            )}
+
+            {(isAdmin || hasPermission('finance')) && (
+              <div className="cash-pulse-card">
+                <div className="cash-pulse-top">
+                  <span className="cash-pulse-label">Cash Position</span>
+                  <span className={`cash-pulse-net ${(stats.netBalance || 0) < 0 ? 'is-negative' : ''}`}>{formatMoney(stats.netBalance || 0)} net</span>
+                </div>
+                <div className="cash-pulse-bar">
+                  <span className="cash-income" style={{ width: `${Math.round((paidIncome / cashTotal) * 100)}%` }} />
+                  <span className="cash-expense" style={{ width: `${Math.round((totalExpenses / cashTotal) * 100)}%` }} />
+                  <span className="cash-unpaid" style={{ width: `${Math.round((unpaidReceipts / cashTotal) * 100)}%` }} />
+                </div>
+                <div className="cash-pulse-grid">
+                  <div className="cash-pulse-item"><small><span className="cash-pulse-dot cash-income" />Paid income</small><strong>{formatMoney(paidIncome)}</strong></div>
+                  <div className="cash-pulse-item"><small><span className="cash-pulse-dot cash-expense" />Expenses</small><strong>{formatMoney(totalExpenses)}</strong></div>
+                  <div className="cash-pulse-item"><small><span className="cash-pulse-dot cash-unpaid" />Unpaid</small><strong>{formatMoney(unpaidReceipts)}</strong></div>
+                </div>
+              </div>
+            )}
+
+            <div className="admin-ops-grid">
+              {adminOpsStats.map((s, i) => (
+                <div key={i} className="admin-ops-card">
+                  <div className="admin-ops-icon" style={{ background: s.bg, color: s.color }}><s.Icon size={19} /></div>
+                  <div>
+                    <div className="admin-ops-value">{s.value ?? '0'}</div>
+                    <div className="admin-ops-label">{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div className="stat-grid">
-              {dashboardStats.map((s, i) => (
+              {dashboardStats.slice(0, 6).map((s, i) => (
                 <div key={i} className="stat-card">
                   <div className="stat-icon" style={{ background: 'color-mix(in srgb, ' + s.color + ' 12%, transparent)' }}><s.Icon size={17} color={s.color} /></div>
                   <div className="stat-value">{s.value ?? '—'}</div>
@@ -888,6 +981,12 @@ export default function AdminApp() {
             <SectionHeader title="Client Prepaid Balances" action={<button className="btn btn-sm btn-primary" onClick={openWalletTopUp}><Wallet size={14} />Cash Top-Up</button>} />
             <div className="banner banner-info" style={{ marginBottom: 16 }}>Cash payments are recorded first, then a different finance user verifies them. Balances can only be charged through the ledger below.</div>
 
+            <div className="wallet-summary-grid">
+              <div className="wallet-summary-card is-teal"><small>Total NGN</small><strong>{formatMoney(walletNgnTotal, 'NGN')}</strong></div>
+              <div className="wallet-summary-card is-amber"><small>Total RMB</small><strong>{formatMoney(walletRmbTotal, 'RMB')}</strong></div>
+              <div className="wallet-summary-card is-blue"><small>Pending</small><strong>{pendingWalletTopUps}</strong></div>
+            </div>
+
             <SectionHeader title="Cash Top-Ups Awaiting Verification" />
             {walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length === 0 ? <EmptyState icon="receipt" title="No cash top-ups awaiting verification" text="New cash deposits will appear here until a second finance user approves them." /> : walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').map(entry => (
               <div key={entry.id} className="card">
@@ -942,6 +1041,11 @@ export default function AdminApp() {
                   <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>{c.route} · {c.type}</div>
                   <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
                     Dep {fmtDate(c.departure_date)} → ETA {fmtDate(c.arrival_date)}
+                  </div>
+                  <div className="container-voyage-mini">
+                    <span>{String(c.route || '').split(/→|->|-/).map(part => part.trim()).filter(Boolean)[0] || 'China'}</span>
+                    <span className="container-voyage-mini-line"><span style={{ width: `${calculateVoyagePct(c)}%` }} /></span>
+                    <span>{String(c.route || '').split(/→|->|-/).map(part => part.trim()).filter(Boolean).slice(-1)[0] || 'Nigeria'}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
                     <span style={{ color: 'var(--info)' }}>{cGoods.length} items</span>
