@@ -10,6 +10,8 @@ const corsHeaders = {
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders })
 
+const CLIENT_SESSION_DAYS = 90
+
 async function hashToken(token: string) {
   const bytes = new TextEncoder().encode(token)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
@@ -71,7 +73,7 @@ Deno.serve(async req => {
 
     const sessionToken = createSessionToken()
     const tokenHash = await hashToken(sessionToken)
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    const expiresAt = new Date(Date.now() + CLIENT_SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
     // Cleanup is best effort. It keeps the session table bounded without
     // interfering with a successful client sign-in.

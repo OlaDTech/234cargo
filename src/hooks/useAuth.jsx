@@ -2,6 +2,30 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { supabase, getCurrentProfile } from '../lib/supabase'
 
 const AuthContext = createContext(null)
+const CLIENT_SESSION_STORAGE_KEY = 'oa_client'
+
+function restoreClientSession() {
+  try {
+    const saved = localStorage.getItem(CLIENT_SESSION_STORAGE_KEY)
+    if (!saved) return null
+
+    const parsed = JSON.parse(saved)
+    const client = parsed.client || parsed
+    const sessionToken = parsed.sessionToken || null
+    const expiresAt = parsed.expiresAt || null
+    const expiresAtMs = expiresAt ? Date.parse(expiresAt) : null
+
+    if (!client?.id || !sessionToken || (expiresAtMs && expiresAtMs <= Date.now())) {
+      localStorage.removeItem(CLIENT_SESSION_STORAGE_KEY)
+      return null
+    }
+
+    return { client, sessionToken, expiresAt }
+  } catch {
+    localStorage.removeItem(CLIENT_SESSION_STORAGE_KEY)
+    return null
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)       // Supabase auth user (admin/staff)
@@ -43,13 +67,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // Restore client session from localStorage
-    const saved = localStorage.getItem('oa_client')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setClientUser(parsed.client || parsed)
-        setClientSessionToken(parsed.sessionToken || null)
-      } catch {}
+    const savedClientSession = restoreClientSession()
+    if (savedClientSession) {
+      setClientUser(savedClientSession.client)
+      setClientSessionToken(savedClientSession.sessionToken)
     }
 
     // Check Supabase auth session
@@ -101,14 +122,14 @@ export function AuthProvider({ children }) {
     const sessionToken = clientSession?.sessionToken || null
     setClientUser(client)
     setClientSessionToken(sessionToken)
-    localStorage.setItem('oa_client', JSON.stringify({ client, sessionToken, expiresAt: clientSession?.expiresAt || null }))
+    localStorage.setItem(CLIENT_SESSION_STORAGE_KEY, JSON.stringify({ client, sessionToken, expiresAt: clientSession?.expiresAt || null }))
   }
 
   const signOut = async () => {
     if (clientUser) {
       setClientUser(null)
       setClientSessionToken(null)
-      localStorage.removeItem('oa_client')
+      localStorage.removeItem(CLIENT_SESSION_STORAGE_KEY)
     } else {
       await supabase.auth.signOut()
       setUser(null)

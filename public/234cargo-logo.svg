@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" role="img" aria-labelledby="title desc">
+  <title id="title">234Cargo</title>
+  <desc id="desc">234Cargo logo with green container mark and navy wordmark.</desc>
+  <defs>
+    <linearGradient id="cargoGreen" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0bbf67"/>
+      <stop offset="1" stop-color="#07883f"/>
+    </linearGradient>
+    <linearGradient id="cargoNavy" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#073f68"/>
+      <stop offset="1" stop-color="#062744"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(24 29)">
+    <path d="M145 17a81 81 0 1 0 0 128l-30-34a36 36 0 1 1 0-60z" fill="url(#cargoNavy)"/>
+    <path d="M42 73h74l44-24v70l-44-24H42a8 8 0 0 1 0-16h52v-6H42a8 8 0 0 1 0-16z" fill="url(#cargoGreen)"/>
+    <path d="M164 52l70 19v42l-70 17z" fill="url(#cargoGreen)"/>
+    <path d="M181 67v50M204 73v38M226 79v27" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+    <path d="M18 69h64M18 91h59M18 113h54" stroke="#0aa852" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <text x="284" y="141" font-family="Inter, Arial, sans-serif" font-size="86" font-weight="800" letter-spacing="-5">
+    <tspan fill="#08a84f">234</tspan><tspan fill="#063253">Cargo</tspan>
+  </text>
+</svg>

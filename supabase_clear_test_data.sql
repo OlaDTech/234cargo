@@ -3,16 +3,17 @@
 -- Run once in the Supabase SQL Editor when ready for live use.
 --
 -- This is irreversible. It preserves staff/admin Auth accounts, profiles,
--- settings, database structure, RLS policies, and the goods-photos bucket.
+-- settings, warehouse addresses, database structure, RLS policies, and the
+-- goods-photos bucket.
 -- It deletes all test clients, shipments, receipts, wallet activity, and
--- uploaded goods photos.
+-- operational records. Uploaded goods photos must be cleared separately from
+-- Supabase Storage because direct SQL deletes from storage.objects are blocked.
 -- ============================================================
 
 begin;
 
--- Remove uploaded test images but keep the goods-photos bucket itself.
-delete from storage.objects
-where bucket_id = 'goods-photos';
+-- Sea and air warehouse addresses are stored in public.settings and are
+-- intentionally left untouched by this reset.
 
 -- Delete dependent operational records before the client records they use.
 delete from public.scan_logs;
@@ -42,5 +43,25 @@ select
   (select count(*) from public.receipts) as receipts,
   (select count(*) from public.wallet_transactions) as wallet_transactions,
   (select count(*) from public.purchase_requests) as purchase_requests,
-  (select count(*) from public.messages) as messages,
-  (select count(*) from storage.objects where bucket_id = 'goods-photos') as goods_photos;
+  (select count(*) from public.messages) as messages;
+
+-- Optional sanity check: these address settings should still be present.
+select key, value
+from public.settings
+where key in (
+  'china_sea_warehouse_name',
+  'china_sea_warehouse_address',
+  'china_sea_warehouse_phone',
+  'china_air_warehouse_name',
+  'china_air_warehouse_address',
+  'china_air_warehouse_phone'
+)
+order by key;
+
+-- Optional storage check: shows how much space old goods photos still occupy.
+select
+  'goods-photos' as bucket_id,
+  count(*) as file_count,
+  pg_size_pretty(coalesce(sum(nullif(metadata ->> 'size', '')::bigint), 0)) as total_size
+from storage.objects
+where bucket_id = 'goods-photos';
