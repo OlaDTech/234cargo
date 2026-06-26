@@ -59,6 +59,26 @@ update settings set value = '1200' where key = 'sea_rate_kg' and value = '1.20';
 update settings set value = '18000' where key = 'air_rate_kg' and value = '18.00';
 update settings set value = '234 Cargo Logistics' where key = 'company_name' and value = 'OceanAir Logistics';
 
+-- Sea and air freight can receive goods at different China warehouses. Copy the
+-- legacy shared warehouse details on first run so existing labels keep working
+-- until an administrator enters the two real receiving addresses.
+insert into settings (key, value)
+select setting_key, setting_value
+from (
+  select 'china_sea_warehouse_name'::text as setting_key, value as setting_value from settings where key = 'china_warehouse_name'
+  union all
+  select 'china_sea_warehouse_address', value from settings where key = 'china_warehouse_address'
+  union all
+  select 'china_sea_warehouse_phone', value from settings where key = 'china_warehouse_phone'
+  union all
+  select 'china_air_warehouse_name', value from settings where key = 'china_warehouse_name'
+  union all
+  select 'china_air_warehouse_address', value from settings where key = 'china_warehouse_address'
+  union all
+  select 'china_air_warehouse_phone', value from settings where key = 'china_warehouse_phone'
+) as warehouse_settings
+on conflict (key) do nothing;
+
 -- ── USERS (staff & admin) ─────────────────────────────────
 -- We use Supabase Auth for authentication.
 -- This table holds profile + role data.

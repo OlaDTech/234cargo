@@ -305,10 +305,27 @@ export function PhotoGallery({ photos = [], compact = false }) {
   )
 }
 
+function warehouseForShipment(settings, shipmentType) {
+  const type = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'sea'
+  const legacy = {
+    name: settings.china_warehouse_name,
+    address: settings.china_warehouse_address,
+    phone: settings.china_warehouse_phone,
+  }
+
+  return {
+    name: settings[`china_${type}_warehouse_name`] || legacy.name,
+    address: settings[`china_${type}_warehouse_address`] || legacy.address,
+    phone: settings[`china_${type}_warehouse_phone`] || legacy.phone,
+    heading: type === 'air' ? 'Air Freight Receiving Address' : 'Sea Freight Receiving Address',
+  }
+}
+
 export function ShippingLabel({ client, settings = {}, shipmentType }) {
   if (!client) return null
   const method = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'general'
   const payload = `234:${client.shipping_mark || ''}:${method}`
+  const warehouse = warehouseForShipment(settings, shipmentType)
   return (
     <div className="shipping-label">
       {/* Brand header bar */}
@@ -345,10 +362,10 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
           <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 4, color: '#fff', fontFamily: 'Space Grotesk,sans-serif', marginTop: 3 }}>{client.shipping_mark}</div>
         </div>
         <div style={{ borderTop: '1px dashed var(--line2)', marginTop: 14, paddingTop: 12 }}>
-          <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 4 }}>Origin Warehouse</div>
-          <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--t1)' }}>{settings.china_warehouse_name}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--t2)', marginTop: 1 }}>{settings.china_warehouse_address}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--teal-d)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Icons.phone size={12} color="var(--teal-d)" />{settings.china_warehouse_phone}</div>
+          <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 4 }}>{warehouse.heading}</div>
+          <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--t1)' }}>{warehouse.name || 'Receiving warehouse details pending'}</div>
+          {warehouse.address && <div style={{ fontSize: 11.5, color: 'var(--t2)', marginTop: 1 }}>{warehouse.address}</div>}
+          {warehouse.phone && <div style={{ fontSize: 11.5, color: 'var(--teal-d)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Icons.phone size={12} color="var(--teal-d)" />{warehouse.phone}</div>}
         </div>
       </div>
     </div>

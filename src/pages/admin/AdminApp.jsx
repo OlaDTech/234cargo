@@ -11,6 +11,32 @@ import { downloadReceiptPdf } from '../../lib/receiptPdf'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 import { marketplaceUrl, purchasePlatformLabel, purchaseStatusMeta, PURCHASE_STATUSES } from '../../lib/purchaseRequests'
 
+const WAREHOUSE_SETTING_FIELDS = {
+  sea: [
+    ['china_sea_warehouse_name', 'Warehouse Name'],
+    ['china_sea_warehouse_address', 'Warehouse Address'],
+    ['china_sea_warehouse_phone', 'Warehouse Phone'],
+  ],
+  air: [
+    ['china_air_warehouse_name', 'Warehouse Name'],
+    ['china_air_warehouse_address', 'Warehouse Address'],
+    ['china_air_warehouse_phone', 'Warehouse Phone'],
+  ],
+}
+
+function settingsWithSeparateWarehouses(settings = {}) {
+  const valueFor = (key, legacyKey) => settings[key] || settings[legacyKey] || ''
+  return {
+    ...settings,
+    china_sea_warehouse_name: valueFor('china_sea_warehouse_name', 'china_warehouse_name'),
+    china_sea_warehouse_address: valueFor('china_sea_warehouse_address', 'china_warehouse_address'),
+    china_sea_warehouse_phone: valueFor('china_sea_warehouse_phone', 'china_warehouse_phone'),
+    china_air_warehouse_name: valueFor('china_air_warehouse_name', 'china_warehouse_name'),
+    china_air_warehouse_address: valueFor('china_air_warehouse_address', 'china_warehouse_address'),
+    china_air_warehouse_phone: valueFor('china_air_warehouse_phone', 'china_warehouse_phone'),
+  }
+}
+
 export default function AdminApp() {
   const { profile, signOut, isAdmin, hasPermission } = useAuth()
   const [tab, setTab] = useState('dashboard')
@@ -74,6 +100,7 @@ export default function AdminApp() {
   const [purchaseQuery, setPurchaseQuery] = useState('')
   const [purchaseStatusFilter, setPurchaseStatusFilter] = useState('all')
   const [adminLabelType, setAdminLabelType] = useState('sea')
+  const [settingsLabelType, setSettingsLabelType] = useState('sea')
   const reloadTimer = useRef(null)
   const messageListRef = useRef(null)
 
@@ -136,7 +163,7 @@ export default function AdminApp() {
     setAnnouncements(ann); setSuppliers(sup); setMessages(msg); setPurchaseRequests(purchases)
     setStaffList(staff)
     setWalletAccounts(walletAccountRows); setWalletTransactions(walletTransactionRows)
-    const cfgMap = Object.fromEntries(cfg.map(r => [r.key, r.value]))
+    const cfgMap = settingsWithSeparateWarehouses(Object.fromEntries(cfg.map(r => [r.key, r.value])))
     setSettings(cfgMap)
     if (syncForms) setSettingsForm(cfgMap)
     const totalCbm = g.reduce((s, x) => s + (parseFloat(x.cbm) || 0), 0)
@@ -153,10 +180,12 @@ export default function AdminApp() {
 
   const saveSettings = async () => {
     try {
-      await Promise.all(Object.entries(settingsForm).map(([key, value]) =>
-        supabase.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key)
+      const nextSettings = settingsWithSeparateWarehouses(settingsForm)
+      await Promise.all(Object.entries(nextSettings).map(([key, value]) =>
+        supabase.from('settings').upsert({ key, value: value || '', updated_at: new Date().toISOString() }, { onConflict: 'key' })
       ))
-      setSettings(settingsForm)
+      setSettings(nextSettings)
+      setSettingsForm(nextSettings)
       toast.success('Settings saved — all shipping labels updated!')
     } catch { toast.error('Failed to save settings') }
   }
@@ -1185,19 +1214,18 @@ export default function AdminApp() {
             <SectionHeader title="System Settings" action={<span style={{ fontSize: 11, color: 'var(--muted)' }}>Admin only</span>} />
             <div className="banner banner-warn" style={{ marginBottom: 16 }}>Changes here update all shipping labels immediately.</div>
 
-            <div className="card">
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>China Warehouse</div>
-              {[
-                ['china_warehouse_name', 'Warehouse Name'],
-                ['china_warehouse_address', 'Warehouse Address'],
-                ['china_warehouse_phone', 'Warehouse Phone'],
-              ].map(([k, l]) => (
-                <div key={k} className="input-group">
-                  <label className="input-label">{l}</label>
-                  <input className="input-field" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
-                </div>
-              ))}
-            </div>
+            {['sea', 'air'].map(type => (
+              <div className="card" key={type}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 4 }}>{type === 'sea' ? 'China Sea Freight Warehouse' : 'China Air Freight Warehouse'}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Shown on {type === 'sea' ? 'sea freight' : 'air freight'} shipping labels.</div>
+                {WAREHOUSE_SETTING_FIELDS[type].map(([k, l]) => (
+                  <div key={k} className="input-group">
+                    <label className="input-label">{l}</label>
+                    <input className="input-field" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
+                  </div>
+                ))}
+              </div>
+            ))}
 
             <div className="card">
               <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>Company Info</div>
@@ -1223,7 +1251,8 @@ export default function AdminApp() {
             {clients[0] && (
               <div style={{ marginTop: 20 }}>
                 <SectionHeader title="Label Preview" />
-                <ShippingLabel client={clients[0]} settings={settingsForm} />
+                <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={settingsLabelType} onChange={setSettingsLabelType} />
+                <ShippingLabel client={clients[0]} settings={settingsForm} shipmentType={settingsLabelType} />
               </div>
             )}
           </>

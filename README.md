@@ -91,7 +91,7 @@ The included `_redirects` file routes all paths to `index.html` so client-side r
 
 **Receipts:** Admin generates a receipt per goods record; rate is pulled from **Settings → Rates** (CBM rate + kg surcharge for sea, flat kg rate for air). Clients see a "View Receipt" button under any goods item once issued.
 
-**Warehouse settings:** Admin-only. Editing the China warehouse name/address/phone or company name under Settings updates the data every shipping label reads from — every client's label reflects the change immediately, with no per-client editing needed.
+**Warehouse settings:** Admin-only. Settings holds separate China receiving name/address/phone details for sea freight and air freight. The shipping-label method picker selects the matching address, so every supplier receives the correct warehouse details.
 
 ## 7. Client prepaid balance
 
