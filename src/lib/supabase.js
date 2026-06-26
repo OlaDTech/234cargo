@@ -59,27 +59,7 @@ export async function clientSignIn(identifier, password) {
       expiresAt: secureData.expires_at,
     }
   }
-
-  // Keeps the existing portal available until the Edge Function is deployed.
-  // The wallet itself never uses this fallback because it requires sessionToken.
-  let { data, error } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('phone', credentials.identifier)
-    .maybeSingle()
-  if (!data && !error) {
-    const byMark = await supabase
-      .from('clients')
-      .select('*')
-      .eq('shipping_mark', credentials.identifier)
-      .maybeSingle()
-    data = byMark.data
-    error = byMark.error
-  }
-  if (error || !data) throw new Error('Client not found. Check your phone number or shipping mark.')
-  if (data.password_hash !== credentials.password) throw new Error('Incorrect password.')
-  const { password_hash: _passwordHash, ...client } = data
-  return { client, sessionToken: null, expiresAt: null }
+  throw new Error(secureData?.error || 'Could not sign in securely. Check your details and try again.')
 }
 
 export async function getClientWallet(sessionToken) {
@@ -90,6 +70,37 @@ export async function getClientWallet(sessionToken) {
   })
   if (error) throw new Error('Could not load your prepaid balance. Please sign in again if the problem continues.')
   return data
+}
+
+async function invokeClientPortal(sessionToken, options = {}) {
+  if (!sessionToken) throw new Error('Sign out and sign back in to continue securely.')
+  const { data, error } = await supabase.functions.invoke('client-portal', {
+    ...options,
+    headers: { Authorization: `Bearer ${sessionToken}`, ...(options.headers || {}) },
+  })
+  if (error) throw new Error('Could not reach your secure client portal. Please sign in again if the problem continues.')
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+export function getClientPortal(sessionToken) {
+  return invokeClientPortal(sessionToken, { method: 'GET' })
+}
+
+export function sendClientPortalMessage(sessionToken, message) {
+  return invokeClientPortal(sessionToken, { body: { action: 'send_message', message } })
+}
+
+export function submitClientPurchaseRequest(sessionToken, payload) {
+  return invokeClientPortal(sessionToken, { body: { action: 'submit_purchase_request', ...payload } })
+}
+
+export function payClientReceipt(sessionToken, receiptId) {
+  return invokeClientPortal(sessionToken, { body: { action: 'pay_receipt', receipt_id: receiptId } })
+}
+
+export function payClientPurchase(sessionToken, purchaseRequestId) {
+  return invokeClientPortal(sessionToken, { body: { action: 'pay_purchase_request', purchase_request_id: purchaseRequestId } })
 }
 
 // ── Settings ───────────────────────────────────────────────
@@ -122,6 +133,26 @@ export async function recordWalletEntry(payload) {
     p_reference_type: payload.referenceType || null,
     p_reference_id: payload.referenceId || null,
     p_description: payload.description || null,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function payWalletReceipt(clientId, receiptId) {
+  const { data, error } = await supabase.rpc('pay_wallet_receipt', {
+    p_client_id: clientId,
+    p_receipt_id: receiptId,
+    p_initiated_by_client: false,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function payWalletPurchase(clientId, purchaseRequestId) {
+  const { data, error } = await supabase.rpc('pay_wallet_purchase', {
+    p_client_id: clientId,
+    p_purchase_request_id: purchaseRequestId,
+    p_initiated_by_client: false,
   })
   if (error) throw error
   return data

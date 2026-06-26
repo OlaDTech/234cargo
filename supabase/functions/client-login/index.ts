@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,8 +54,19 @@ Deno.serve(async req => {
     }
 
     const client = result.data
-    if (result.error || !client || client.password_hash !== password) {
+    const passwordMatches = client
+      ? (client.password_hash.startsWith('$2')
+        ? await bcrypt.compare(password, client.password_hash)
+        : client.password_hash === password)
+      : false
+    if (result.error || !client || !passwordMatches) {
       return json({ error: 'Invalid phone number, shipping mark, or password.' }, 401)
+    }
+
+    // Existing demo passwords are upgraded to bcrypt at the first successful
+    // secure sign-in. New passwords are hashed by the database trigger.
+    if (!client.password_hash.startsWith('$2')) {
+      await admin.from('clients').update({ password_hash: await bcrypt.hash(password, 12) }).eq('id', client.id)
     }
 
     const sessionToken = createSessionToken()

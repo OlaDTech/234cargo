@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { getClientWallet, supabase } from '../../lib/supabase'
+import { getClientPortal, getClientWallet, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
-import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
+import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, purchaseStatusMeta, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
 
 const WALLET_ENTRY_LABELS = {
   cash_topup: 'Cash top-up',
@@ -24,6 +24,7 @@ export default function ClientApp() {
   const [suppliers, setSuppliers] = useState([])
   const [messages, setMessages] = useState([])
   const [receipts, setReceipts] = useState([])
+  const [purchaseRequests, setPurchaseRequests] = useState([])
   const [settings, setSettings] = useState({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -34,10 +35,11 @@ export default function ClientApp() {
   const [labelShipmentType, setLabelShipmentType] = useState('sea')
   const [purchaseForm, setPurchaseForm] = useState(EMPTY_PURCHASE_REQUEST)
   const [submittingPurchase, setSubmittingPurchase] = useState(false)
+  const [payingReceipt, setPayingReceipt] = useState(null)
+  const [payingPurchase, setPayingPurchase] = useState(null)
   const [wallet, setWallet] = useState(null)
   const [walletLoading, setWalletLoading] = useState(false)
   const [walletError, setWalletError] = useState('')
-  const reloadTimer = useRef(null)
   const chatListRef = useRef(null)
 
   const loadWallet = useCallback(async () => {
@@ -72,25 +74,9 @@ export default function ClientApp() {
   }, [tab, clientSessionToken, loadWallet])
 
   useEffect(() => {
-    const scheduleReload = () => {
-      clearTimeout(reloadTimer.current)
-      reloadTimer.current = setTimeout(() => loadAll(false), 250)
-    }
-
-    const sub = supabase.channel('client-live-' + clientUser.id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'goods', filter: `client_id=eq.${clientUser.id}` }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts', filter: `client_id=eq.${clientUser.id}` }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `client_id=eq.${clientUser.id}` }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, scheduleReload)
-      .subscribe()
-
-    return () => {
-      clearTimeout(reloadTimer.current)
-      supabase.removeChannel(sub)
-    }
-  }, [clientUser.id])
+    const interval = setInterval(() => loadAll(false), 60000)
+    return () => clearInterval(interval)
+  }, [clientSessionToken])
 
   useEffect(() => {
     if (tab !== 'chat' || !chatListRef.current) return
@@ -100,25 +86,24 @@ export default function ClientApp() {
 
   const loadAll = async (showLoader = true) => {
     if (showLoader) setLoading(true)
-    const [{ data: g }, { data: a }, { data: s }, { data: m }, { data: r }, { data: cfg }] = await Promise.all([
-      supabase.from('goods').select('*').eq('client_id', clientUser.id).order('created_at', { ascending: false }),
-      supabase.from('announcements').select('*').order('created_at', { ascending: false }),
-      supabase.from('suppliers').select('*').order('name'),
-      supabase.from('messages').select('*').eq('client_id', clientUser.id).order('created_at'),
-      supabase.from('receipts').select('*').eq('client_id', clientUser.id).order('issued_at', { ascending: false }),
-      supabase.from('settings').select('key,value'),
-    ])
-    setGoods(g || []); setAnnouncements(a || []); setSuppliers(s || [])
-    setMessages(m || []); setReceipts(r || [])
-    if (cfg) setSettings(Object.fromEntries(cfg.map(r => [r.key, r.value])))
-    if (showLoader) setLoading(false)
+    try {
+      const data = await getClientPortal(clientSessionToken)
+      setGoods(data.goods || []); setAnnouncements(data.announcements || []); setSuppliers(data.suppliers || [])
+      setMessages(data.messages || []); setReceipts(data.receipts || []); setPurchaseRequests(data.purchase_requests || [])
+      setSettings(data.settings || {})
+    } catch (error) {
+      if (showLoader) toast.error(error.message || 'Could not load your client portal')
+    } finally {
+      if (showLoader) setLoading(false)
+    }
   }
 
   const sendMsg = async () => {
     if (!msgText.trim()) return
-    const { data, error } = await supabase.from('messages').insert({ client_id: clientUser.id, sender: 'client', message: msgText.trim() }).select().single()
-    if (!error) { setMessages(prev => [...prev, data]); setMsgText('') }
-    else toast.error('Failed to send message')
+    try {
+      const { message } = await sendClientPortalMessage(clientSessionToken, msgText.trim())
+      setMessages(prev => [...prev, message]); setMsgText('')
+    } catch (error) { toast.error(error.message || 'Failed to send message') }
   }
 
   const refreshData = async () => {
@@ -150,25 +135,55 @@ export default function ClientApp() {
     }
 
     setSubmittingPurchase(true)
-    const { error } = await supabase.from('purchase_requests').insert({
-      client_id: clientUser.id,
-      platform: purchaseForm.platform,
-      product_link: productLink,
-      product_name: purchaseForm.product_name.trim() || null,
-      variant: purchaseForm.variant.trim() || null,
-      quantity: Math.max(1, parseInt(purchaseForm.quantity, 10) || 1),
-      notes: purchaseForm.notes.trim() || null,
-    })
-    setSubmittingPurchase(false)
-
-    if (error) {
-      toast.error('Could not submit your request. Please try again.')
-      return
+    try {
+      await submitClientPurchaseRequest(clientSessionToken, {
+        platform: purchaseForm.platform,
+        product_link: productLink,
+        product_name: purchaseForm.product_name.trim(),
+        variant: purchaseForm.variant.trim(),
+        quantity: Math.max(1, parseInt(purchaseForm.quantity, 10) || 1),
+        notes: purchaseForm.notes.trim(),
+      })
+      setPurchaseForm(EMPTY_PURCHASE_REQUEST)
+      toast.success('Purchase request sent to our China team')
+      loadAll(false)
+    } catch (error) {
+      toast.error(error.message || 'Could not submit your request. Please try again.')
+    } finally {
+      setSubmittingPurchase(false)
     }
+  }
 
-    setPurchaseForm(EMPTY_PURCHASE_REQUEST)
-    toast.success('Purchase request sent to our China team')
-    loadAll(false)
+  const payReceiptFromWallet = async receipt => {
+    if (!receipt || receipt.status !== 'unpaid') return
+    if (!window.confirm(`Pay ${formatMoney(receipt.total, receipt.currency || 'NGN')} for ${receipt.receipt_no} from your prepaid wallet?`)) return
+    setPayingReceipt(receipt.id)
+    try {
+      await payClientReceipt(clientSessionToken, receipt.id)
+      toast.success('Receipt paid from your prepaid wallet')
+      setSelectedReceipt(null)
+      await Promise.all([loadAll(false), loadWallet()])
+    } catch (error) {
+      toast.error(error.message || 'Could not pay this receipt from your wallet')
+    } finally {
+      setPayingReceipt(null)
+    }
+  }
+
+  const payPurchaseFromWallet = async request => {
+    if (!request || request.status !== 'awaiting_payment' || !Number(request.quoted_amount_rmb)) return
+    const itemName = request.product_name || 'this purchase request'
+    if (!window.confirm(`Pay ${formatMoney(request.quoted_amount_rmb, 'RMB')} for ${itemName} from your RMB wallet?`)) return
+    setPayingPurchase(request.id)
+    try {
+      await payClientPurchase(clientSessionToken, request.id)
+      toast.success('Purchase request paid from your RMB wallet')
+      await Promise.all([loadAll(false), loadWallet()])
+    } catch (error) {
+      toast.error(error.message || 'Could not pay this purchase request from your wallet')
+    } finally {
+      setPayingPurchase(null)
+    }
   }
 
   const tabs = [
@@ -378,6 +393,20 @@ export default function ClientApp() {
               </button>
             </div>
             <div className="banner banner-info" style={{ marginTop: 16 }}>We will send the approval, RMB quote, and purchase status to your Messages.</div>
+            <SectionHeader title={`Your Purchase Requests (${purchaseRequests.length})`} />
+            {purchaseRequests.length === 0 ? <EmptyState icon="store" title="No purchase requests yet" text="Your submitted links and purchase updates will appear here." /> : purchaseRequests.map(request => {
+              const status = purchaseStatusMeta(request.status)
+              const canPay = request.status === 'awaiting_payment' && Number(request.quoted_amount_rmb) > 0
+              return <div key={request.id} className="card">
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div><strong>{request.product_name || 'Marketplace item'}</strong><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>{request.platform.toUpperCase()} · Qty {request.quantity}{request.variant ? ` · ${request.variant}` : ''}</div></div>
+                  <span style={{ color: status.color, fontSize: 12, fontWeight: 700 }}>{status.label}</span>
+                </div>
+                {request.quoted_amount_rmb != null && <div style={{ color: 'var(--teal-d)', fontSize: 14, fontWeight: 800, marginTop: 10 }}>RMB {Number(request.quoted_amount_rmb).toLocaleString()}</div>}
+                {request.team_notes && <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>{request.team_notes}</div>}
+                {canPay && <button className="btn btn-primary btn-full" style={{ marginTop: 12 }} onClick={() => payPurchaseFromWallet(request)} disabled={payingPurchase === request.id}><Wallet size={16} />{payingPurchase === request.id ? 'Paying From RMB Wallet...' : 'Pay From RMB Wallet'}</button>}
+              </div>
+            })}
           </>
         )}
 
@@ -495,6 +524,7 @@ export default function ClientApp() {
       {/* Receipt modal */}
       <Modal open={!!selectedReceipt} title="Receipt" onClose={() => setSelectedReceipt(null)}>
         <ReceiptView receipt={selectedReceipt} client={clientUser} companyName={settings.company_name || '234 Cargo'} />
+        {selectedReceipt?.status === 'unpaid' && <button onClick={() => payReceiptFromWallet(selectedReceipt)} disabled={payingReceipt === selectedReceipt.id} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Wallet size={16} />{payingReceipt === selectedReceipt.id ? 'Paying From Wallet...' : 'Pay With Prepaid Wallet'}</button>}
         <button onClick={() => downloadReceiptPdf({ receipt: selectedReceipt, client: clientUser, companyName: settings.company_name || '234 Cargo Logistics' })} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Download size={16} />Download PDF Receipt</button>
         <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 8 }}>Print A4 Receipt</button>
       </Modal>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw, ShoppingCart, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, recordWalletEntry, supabase, updateClient } from '../../lib/supabase'
+import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, payWalletPurchase, payWalletReceipt, recordWalletEntry, supabase, updateClient } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -444,27 +444,54 @@ export default function AdminApp() {
     }
   }
 
-  const openWalletEntry = account => {
+  const openWalletEntry = (account, receipt = null) => {
     if (!account?.client_id) { toast.error('Select a client wallet first'); return }
-    setWalletEntryForm({ client_id: account.client_id, currency: account.currency, amount: '', entry_type: 'shipping_charge', reference_type: '', reference_id: '', description: '' })
+    setWalletEntryForm({
+      client_id: account.client_id,
+      currency: receipt?.currency || account.currency,
+      amount: receipt ? String(receipt.total) : '',
+      entry_type: 'shipping_charge',
+      reference_type: receipt ? 'receipt' : '',
+      reference_id: receipt?.id || '',
+      description: receipt ? `Wallet payment for receipt ${receipt.receipt_no}` : '',
+    })
     setShowWalletEntry(true)
   }
 
   const saveWalletEntry = async () => {
-    if (!walletEntryForm.client_id || !walletEntryForm.amount || !walletEntryForm.description.trim()) {
-      toast.error('Enter the amount and a clear description for this balance entry')
+    if (!walletEntryForm.client_id) {
+      toast.error('Choose a client wallet')
       return
     }
     try {
-      const entry = await recordWalletEntry({
-        clientId: walletEntryForm.client_id,
-        currency: walletEntryForm.currency,
-        amount: Number(walletEntryForm.amount),
-        entryType: walletEntryForm.entry_type,
-        referenceType: walletEntryForm.reference_type.trim(),
-        referenceId: null,
-        description: walletEntryForm.description.trim(),
-      })
+      let entry
+      if (walletEntryForm.entry_type === 'shipping_charge') {
+        if (!walletEntryForm.reference_id) {
+          toast.error('Choose the unpaid receipt this wallet payment is for')
+          return
+        }
+        entry = await payWalletReceipt(walletEntryForm.client_id, walletEntryForm.reference_id)
+      } else if (walletEntryForm.entry_type === 'purchase_charge') {
+        if (!walletEntryForm.reference_id) {
+          toast.error('Choose the purchase request this charge is for')
+          return
+        }
+        entry = await payWalletPurchase(walletEntryForm.client_id, walletEntryForm.reference_id)
+      } else {
+        if (!walletEntryForm.amount || !walletEntryForm.description.trim()) {
+          toast.error('Enter the amount and a clear description for this balance entry')
+          return
+        }
+        entry = await recordWalletEntry({
+          clientId: walletEntryForm.client_id,
+          currency: walletEntryForm.currency,
+          amount: Number(walletEntryForm.amount),
+          entryType: walletEntryForm.entry_type,
+          referenceType: walletEntryForm.reference_type.trim(),
+          referenceId: walletEntryForm.reference_id || null,
+          description: walletEntryForm.description.trim(),
+        })
+      }
       const action = walletEntryForm.entry_type === 'refund' ? 'A refund was added to' : 'A charge was made to'
       await supabase.from('messages').insert({
         client_id: entry.client_id,
@@ -884,13 +911,17 @@ export default function AdminApp() {
               </div>
             ))}
 
-            <SectionHeader title="Recent Wallet Ledger" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-wallet-ledger', walletTransactions.map(entry => ({ date: entry.created_at, client: entry.client?.full_name, shipping_mark: entry.client?.shipping_mark, currency: entry.currency, type: entry.entry_type, direction: entry.direction, amount: entry.amount, status: entry.status, balance_after: entry.balance_after, description: entry.description })))}><Download size={13} />Export</button>} />
-            {walletTransactions.length === 0 ? <EmptyState icon="receipt" title="No wallet entries yet" text="Top-ups, shipping charges, purchase charges, and refunds will appear here." /> : walletTransactions.slice(0, 40).map(entry => (
-              <div key={entry.id} className="card" style={{ padding: '13px 14px' }}>
+            <SectionHeader title="Recent Wallet Ledger" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-wallet-ledger', walletTransactions.map(entry => ({ date: entry.created_at, client: entry.client?.full_name, shipping_mark: entry.client?.shipping_mark, currency: entry.currency, type: entry.entry_type, direction: entry.direction, amount: entry.amount, status: entry.status, reference_type: entry.reference_type, reference_id: entry.reference_id, balance_after: entry.balance_after, description: entry.description })))}><Download size={13} />Export</button>} />
+            {walletTransactions.length === 0 ? <EmptyState icon="receipt" title="No wallet entries yet" text="Top-ups, shipping charges, purchase charges, and refunds will appear here." /> : walletTransactions.slice(0, 40).map(entry => {
+              const receipt = entry.reference_type === 'receipt' ? receipts.find(item => item.id === entry.reference_id) : null
+              const purchase = entry.reference_type === 'purchase_request' ? purchaseRequests.find(item => item.id === entry.reference_id) : null
+              const reference = receipt ? `Receipt ${receipt.receipt_no}${receipt.goods?.description ? ` - ${receipt.goods.description}` : ''}` : purchase ? `Purchase: ${purchase.product_name || purchasePlatformLabel(purchase.platform)}` : ''
+              return <div key={entry.id} className="card" style={{ padding: '13px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}><div><div style={{ fontWeight: 700, fontSize: 14 }}>{entry.entry_type.replace('_', ' ')}</div><div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 3 }}>{entry.client?.full_name} · {fmtDateTime(entry.created_at)}</div></div><div style={{ textAlign: 'right' }}><strong style={{ color: entry.direction === 'credit' ? 'var(--green)' : 'var(--red)', fontSize: 13 }}>{entry.direction === 'credit' ? '+' : '-'} {formatMoney(entry.amount, entry.currency)}</strong><div style={{ color: entry.status === 'completed' ? 'var(--green)' : 'var(--amber)', fontSize: 11, marginTop: 3 }}>{entry.status === 'pending' ? 'Awaiting verification' : entry.status}</div></div></div>
                 {entry.description && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>{entry.description}</div>}
+                {reference && <div style={{ color: 'var(--teal-d)', fontSize: 12, fontWeight: 700, marginTop: 6 }}>{reference}</div>}
               </div>
-            ))}
+            })}
           </>
         )}
 
@@ -1032,9 +1063,9 @@ export default function AdminApp() {
                       <td>{fmtDate(r.issued_at)}</td>
                       <td>{r.receipt_no}</td>
                       <td>{r.client?.full_name}</td>
-                      <td>{r.status}</td>
+                      <td>{r.status === 'paid' && walletTransactions.some(entry => entry.reference_type === 'receipt' && entry.reference_id === r.id && entry.status === 'completed') ? 'Paid from wallet' : r.status}</td>
                       <td className="amount-income">{formatMoney(r.total, r.currency || 'NGN')}</td>
-                      <td><button className="btn btn-xs btn-secondary" onClick={() => setShowReceiptView(r)}><ReceiptText size={12} />Open</button></td>
+                      <td style={{ display: 'flex', gap: 6 }}><button className="btn btn-xs btn-secondary" onClick={() => setShowReceiptView(r)}><ReceiptText size={12} />Open</button>{r.status === 'unpaid' && hasPermission('finance') && walletAccounts.some(account => account.client_id === r.client_id && account.currency === (r.currency || 'NGN')) && <button className="btn btn-xs btn-primary" onClick={() => openWalletEntry(walletAccounts.find(account => account.client_id === r.client_id && account.currency === (r.currency || 'NGN')), r)}><Wallet size={12} />Wallet</button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1193,13 +1224,20 @@ export default function AdminApp() {
       <Modal open={showWalletEntry} title="Charge or Refund Balance" onClose={() => setShowWalletEntry(false)}>
         {showWalletEntry && <>
           <div className="banner banner-info" style={{ marginBottom: 14 }}>{clients.find(client => client.id === walletEntryForm.client_id)?.full_name || 'Client'} · {walletEntryForm.currency} wallet</div>
-          <div className="input-group"><label className="input-label">Entry Type</label><select className="input-field" value={walletEntryForm.entry_type} onChange={event => setWalletEntryForm(form => ({ ...form, entry_type: event.target.value }))}><option value="shipping_charge">Shipping charge</option><option value="purchase_charge">Purchase charge</option><option value="refund">Refund / credit</option></select></div>
+          <div className="input-group"><label className="input-label">Entry Type</label><select className="input-field" value={walletEntryForm.entry_type} onChange={event => setWalletEntryForm(form => ({ ...form, entry_type: event.target.value, reference_type: '', reference_id: '', amount: '', description: '' }))}><option value="shipping_charge">Pay freight receipt</option><option value="purchase_charge">Charge purchase request</option><option value="refund">Refund / credit</option></select></div>
+          {walletEntryForm.entry_type === 'shipping_charge' && <div className="input-group"><label className="input-label">Unpaid Freight Receipt</label><select className="input-field" value={walletEntryForm.reference_id} onChange={event => {
+            const receipt = receipts.find(item => item.id === event.target.value)
+            setWalletEntryForm(form => ({ ...form, reference_type: 'receipt', reference_id: event.target.value, currency: receipt?.currency || form.currency, amount: receipt ? String(receipt.total) : '', description: receipt ? `Wallet payment for receipt ${receipt.receipt_no}` : '' }))
+          }}><option value="">Choose receipt</option>{receipts.filter(receipt => receipt.client_id === walletEntryForm.client_id && receipt.status === 'unpaid' && (receipt.currency || 'NGN') === walletEntryForm.currency).map(receipt => <option key={receipt.id} value={receipt.id}>{receipt.receipt_no} · {receipt.goods?.description || 'Freight'} · {formatMoney(receipt.total, receipt.currency || 'NGN')}</option>)}</select></div>}
+          {walletEntryForm.entry_type === 'purchase_charge' && <div className="input-group"><label className="input-label">Purchase Request</label><select className="input-field" value={walletEntryForm.reference_id} onChange={event => {
+            const request = purchaseRequests.find(item => item.id === event.target.value)
+            setWalletEntryForm(form => ({ ...form, reference_type: 'purchase_request', reference_id: event.target.value, currency: 'RMB', amount: request?.quoted_amount_rmb == null ? '' : String(request.quoted_amount_rmb), description: request ? `Wallet payment for purchase request: ${request.product_name || purchasePlatformLabel(request.platform)}` : '' }))
+          }}><option value="">Choose purchase request</option>{purchaseRequests.filter(request => request.client_id === walletEntryForm.client_id && !['purchased', 'unavailable', 'cancelled'].includes(request.status)).map(request => <option key={request.id} value={request.id}>{request.product_name || purchasePlatformLabel(request.platform)} · Qty {request.quantity}{request.quoted_amount_rmb == null ? '' : ` · RMB ${Number(request.quoted_amount_rmb).toLocaleString()}`}</option>)}</select></div>}
           <div style={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr)', gap: 10 }}>
-            <div className="input-group"><label className="input-label">Currency</label><select className="input-field" value={walletEntryForm.currency} onChange={event => setWalletEntryForm(form => ({ ...form, currency: event.target.value }))}><option value="NGN">NGN</option><option value="RMB">RMB</option></select></div>
-            <div className="input-group"><label className="input-label">Amount</label><input className="input-field" type="number" min="0.01" step="0.01" inputMode="decimal" value={walletEntryForm.amount} onChange={event => setWalletEntryForm(form => ({ ...form, amount: event.target.value }))} placeholder="0.00" /></div>
+            <div className="input-group"><label className="input-label">Currency</label><select className="input-field" value={walletEntryForm.currency} disabled={walletEntryForm.entry_type !== 'refund'} onChange={event => setWalletEntryForm(form => ({ ...form, currency: event.target.value }))}><option value="NGN">NGN</option><option value="RMB">RMB</option></select></div>
+            <div className="input-group"><label className="input-label">Amount</label><input className="input-field" type="number" min="0.01" step="0.01" inputMode="decimal" value={walletEntryForm.amount} readOnly={walletEntryForm.entry_type !== 'refund'} onChange={event => setWalletEntryForm(form => ({ ...form, amount: event.target.value }))} placeholder="0.00" /></div>
           </div>
-          <div className="input-group"><label className="input-label">Reference Type <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label><input className="input-field" value={walletEntryForm.reference_type} onChange={event => setWalletEntryForm(form => ({ ...form, reference_type: event.target.value }))} placeholder="For example: receipt or purchase request" /></div>
-          <div className="input-group"><label className="input-label">Description</label><textarea className="input-field" rows="3" value={walletEntryForm.description} onChange={event => setWalletEntryForm(form => ({ ...form, description: event.target.value }))} placeholder="Explain exactly what this charge or refund is for." /></div>
+          <div className="input-group"><label className="input-label">Description {walletEntryForm.entry_type !== 'refund' && <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(set from the selected record)</span>}</label><textarea className="input-field" rows="3" value={walletEntryForm.description} readOnly={walletEntryForm.entry_type !== 'refund'} onChange={event => setWalletEntryForm(form => ({ ...form, description: event.target.value }))} placeholder="Explain exactly what this charge or refund is for." /></div>
           <button className="btn btn-primary btn-full" onClick={saveWalletEntry}><Wallet size={16} />{walletEntryForm.entry_type === 'refund' ? 'Add Refund' : 'Record Charge'}</button>
         </>}
       </Modal>
@@ -1358,12 +1396,8 @@ export default function AdminApp() {
         <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 8 }}>Print A4 Receipt</button>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           {(hasPermission('receipts') || hasPermission('finance')) && <button className="btn btn-secondary btn-full" onClick={() => openReceiptEdit(showReceiptView)}><Pencil size={15} />Edit Receipt</button>}
-          {showReceiptView?.status === 'unpaid' && (
-            <button className="btn btn-primary btn-full" onClick={async () => {
-              const { error } = await supabase.from('receipts').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', showReceiptView.id)
-              if (error) { toast.error(error.message); return }
-              toast.success('Marked as paid'); setShowReceiptView(null); loadAll()
-            }}>Mark as Paid</button>
+          {showReceiptView?.status === 'unpaid' && hasPermission('finance') && walletAccounts.some(account => account.client_id === showReceiptView.client_id && account.currency === (showReceiptView.currency || 'NGN')) && (
+            <button className="btn btn-primary btn-full" onClick={() => { const account = walletAccounts.find(item => item.client_id === showReceiptView.client_id && item.currency === (showReceiptView.currency || 'NGN')); setShowReceiptView(null); openWalletEntry(account, showReceiptView) }}><Wallet size={15} />Pay From Client Wallet</button>
           )}
         </div>
       </Modal>

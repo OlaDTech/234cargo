@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.client-wallet]
 verify_jwt = false
+
+[functions.client-portal]
+verify_jwt = false

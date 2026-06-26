@@ -25,8 +25,16 @@
 --      attempts at the edge/proxy layer.
 -- ============================================================
 
+-- SECURITY UPDATE
+-- The policies below now remove the old public client-table access. Deploy
+-- client-login, client-wallet, and client-portal Edge Functions before running
+-- this schema: each function checks an opaque client session server-side and
+-- returns only that client's records. Passwords are stored with bcrypt via the
+-- trigger below, with legacy plaintext values converted when this schema runs.
+
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";
 
 -- ── SETTINGS ──────────────────────────────────────────────
 create table if not exists settings (
@@ -442,32 +450,29 @@ drop policy if exists "profiles_insert" on profiles;
 create policy "profiles_insert" on profiles for insert
   with check (get_my_role() = 'admin');
 
--- SETTINGS: public read (needed for shipping label on client portal, pre-auth); only admin writes
+-- SETTINGS: client portal reads run through the scoped Edge Function; only
+-- signed-in staff can read settings, while only administrators can change them.
 drop policy if exists "settings_read" on settings;
-create policy "settings_read" on settings for select using (true);
+drop policy if exists "settings_staff_read" on settings;
+create policy "settings_staff_read" on settings for select
+  using (get_my_role() is not null);
 drop policy if exists "settings_write" on settings;
 create policy "settings_write" on settings for all using (get_my_role() = 'admin');
 
--- CLIENTS: staff & admin can fully manage.
--- Public SELECT is also allowed so the client portal can look up
--- a client by phone/shipping_mark during login (no Supabase Auth session).
--- Only non-sensitive columns should be exposed this way in production —
--- see README "Hardening" section for moving login to an Edge Function.
+-- CLIENTS: staff and admin can manage client records. Client login is handled
+-- only by the client-login Edge Function, never by a public table query.
 drop policy if exists "clients_staff_admin_all" on clients;
 create policy "clients_staff_admin_all" on clients for all
   using (has_permission('clients'))
   with check (has_permission('clients'));
 drop policy if exists "clients_public_login_read" on clients;
-create policy "clients_public_login_read" on clients for select using (true);
 
--- GOODS: staff & admin manage; clients can read (filtered client-side by client_id,
--- since the client portal has no Supabase Auth session to scope a policy to)
+-- GOODS: client-specific reads are returned by client-portal Edge Function.
 drop policy if exists "goods_staff_admin_all" on goods;
 create policy "goods_staff_admin_all" on goods for all
   using (has_permission('goods') or has_permission('scan'))
   with check (has_permission('goods') or has_permission('scan'));
 drop policy if exists "goods_public_read" on goods;
-create policy "goods_public_read" on goods for select using (true);
 
 -- CONTAINERS: staff & admin
 drop policy if exists "containers_all" on containers;
@@ -475,12 +480,12 @@ create policy "containers_all" on containers for all
   using (has_permission('goods') or has_permission('scan') or has_permission('containers'))
   with check (has_permission('goods') or has_permission('scan') or has_permission('containers'));
 
--- RECEIPTS: receipt or finance permission can manage receipts; clients read their own (filtered client-side)
+-- RECEIPTS: finance/receipt users manage records; client receipt reads and
+-- wallet payment requests are handled through the scoped Edge Function.
 drop policy if exists "receipts_staff_admin_read" on receipts;
 create policy "receipts_staff_admin_read" on receipts for select
   using (has_permission('receipts') or has_permission('finance'));
 drop policy if exists "receipts_public_read" on receipts;
-create policy "receipts_public_read" on receipts for select using (true);
 drop policy if exists "receipts_write" on receipts;
 create policy "receipts_write" on receipts for insert
   with check (has_permission('receipts') or has_permission('finance'));
@@ -495,37 +500,34 @@ create policy "expenses_admin_all" on expenses for all
   using (has_permission('finance'))
   with check (has_permission('finance'));
 
--- ANNOUNCEMENTS: public read (client portal dashboard); admin writes
+-- ANNOUNCEMENTS: client portal access is mediated by client-portal.
 drop policy if exists "ann_read" on announcements;
-create policy "ann_read" on announcements for select using (true);
 drop policy if exists "ann_write" on announcements;
 create policy "ann_write" on announcements for all using (get_my_role() = 'admin');
 
--- SUPPLIERS: public read (client portal directory); admin writes
+-- SUPPLIERS: client portal access is mediated by client-portal.
 drop policy if exists "sup_read" on suppliers;
-create policy "sup_read" on suppliers for select using (true);
 drop policy if exists "sup_write" on suppliers;
 create policy "sup_write" on suppliers for all using (get_my_role() = 'admin');
 
--- MESSAGES: staff/admin manage all; clients can read/insert their own thread
--- (client_id is enforced application-side since clients have no auth.uid())
+-- MESSAGES: client thread reads/inserts are mediated by client-portal.
 drop policy if exists "msg_staff_admin_all" on messages;
 create policy "msg_staff_admin_all" on messages for all
   using (has_permission('messages'))
   with check (has_permission('messages'));
 drop policy if exists "msg_public_read" on messages;
-create policy "msg_public_read" on messages for select using (true);
 drop policy if exists "msg_public_insert" on messages;
-create policy "msg_public_insert" on messages for insert with check (sender = 'client');
 
--- PURCHASE REQUESTS: clients can submit a link; only the purchase team can view or manage requests.
+-- PURCHASE REQUESTS: the Edge Function verifies the client session before it
+-- creates a request, and the purchase team manages the queue.
 drop policy if exists "purchase_requests_team_all" on purchase_requests;
 create policy "purchase_requests_team_all" on purchase_requests for all
   using (has_permission('purchases'))
   with check (has_permission('purchases'));
 drop policy if exists "purchase_requests_client_submit" on purchase_requests;
-create policy "purchase_requests_client_submit" on purchase_requests for insert
-  with check (true);
+drop policy if exists "purchase_requests_finance_read" on purchase_requests;
+create policy "purchase_requests_finance_read" on purchase_requests for select
+  using (has_permission('finance'));
 
 -- Prepaid balance: finance users can read the ledger, while every write goes
 -- through the security-definer functions below. Clients read only through the
@@ -568,6 +570,75 @@ create trigger purchase_requests_updated_at before update on purchase_requests
 drop trigger if exists wallet_accounts_updated_at on wallet_accounts;
 create trigger wallet_accounts_updated_at before update on wallet_accounts
   for each row execute function update_updated_at();
+
+-- A completed wallet payment locks the charged financial record. Refunds are
+-- recorded as separate ledger credits instead of silently rewriting history.
+create or replace function public.prevent_wallet_paid_record_rewrite()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_table_name = 'receipts' and exists (
+    select 1 from wallet_transactions
+    where reference_type = 'receipt'
+      and reference_id = old.id
+      and status = 'completed'
+  ) then
+    if new.client_id is distinct from old.client_id
+      or new.goods_id is distinct from old.goods_id
+      or new.items is distinct from old.items
+      or new.subtotal is distinct from old.subtotal
+      or new.discount is distinct from old.discount
+      or new.total is distinct from old.total
+      or new.currency is distinct from old.currency
+      or new.status is distinct from old.status then
+      raise exception 'A wallet-paid receipt cannot be changed. Record a refund for corrections.';
+    end if;
+  end if;
+
+  if tg_table_name = 'purchase_requests' and exists (
+    select 1 from wallet_transactions
+    where reference_type = 'purchase_request'
+      and reference_id = old.id
+      and status = 'completed'
+  ) then
+    if new.client_id is distinct from old.client_id
+      or new.quoted_amount_rmb is distinct from old.quoted_amount_rmb
+      or new.status in ('submitted', 'reviewing', 'awaiting_payment') then
+      raise exception 'A wallet-paid purchase request cannot be reopened or re-quoted. Record a refund for corrections.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists receipts_wallet_payment_guard on receipts;
+create trigger receipts_wallet_payment_guard before update on receipts
+  for each row execute function public.prevent_wallet_paid_record_rewrite();
+drop trigger if exists purchase_requests_wallet_payment_guard on purchase_requests;
+create trigger purchase_requests_wallet_payment_guard before update on purchase_requests
+  for each row execute function public.prevent_wallet_paid_record_rewrite();
+
+-- Client passwords are stored as bcrypt hashes. Existing legacy plaintext
+-- values are converted by the update below, and every new or changed password
+-- is hashed by this trigger.
+create or replace function public.hash_client_password()
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if new.password_hash !~ '^\$2[aby]\$' then
+    new.password_hash := crypt(new.password_hash, gen_salt('bf', 12));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists clients_password_hashed on clients;
+create trigger clients_password_hashed before insert or update of password_hash on clients
+  for each row execute function public.hash_client_password();
+
+-- Convert existing demo passwords immediately when this schema is applied.
+-- Deploy the bcrypt-aware client-login function before running this update.
+update clients
+set password_hash = password_hash
+where password_hash !~ '^\$2[aby]\$';
 
 -- Record cash received at the Nigeria office. This stays pending until a
 -- different finance user approves the entry.
@@ -734,12 +805,183 @@ begin
 end;
 $$;
 
+-- Pays one unpaid freight receipt from the client's matching wallet. Receipt
+-- and balance rows are locked so the receipt cannot be charged twice.
+create or replace function public.pay_wallet_receipt(
+  p_client_id uuid,
+  p_receipt_id uuid,
+  p_initiated_by_client boolean default false
+)
+returns wallet_transactions language plpgsql security definer set search_path = public as $$
+declare
+  v_receipt receipts;
+  v_account wallet_accounts;
+  v_currency text;
+  v_new_balance numeric(14,2);
+  v_transaction wallet_transactions;
+begin
+  if p_initiated_by_client then
+    if coalesce(auth.role(), '') <> 'service_role' then
+      raise exception 'Client wallet payments must be made through the secure portal';
+    end if;
+  elsif not has_permission('finance') then
+    raise exception 'Finance permission is required';
+  end if;
+
+  select * into v_receipt
+  from receipts
+  where id = p_receipt_id
+  for update;
+
+  if not found then
+    raise exception 'Receipt not found';
+  end if;
+  if v_receipt.client_id <> p_client_id then
+    raise exception 'Receipt does not belong to this client';
+  end if;
+  if v_receipt.status <> 'unpaid' then
+    raise exception 'This receipt has already been paid';
+  end if;
+  if v_receipt.total <= 0 then
+    raise exception 'Receipt total must be greater than zero';
+  end if;
+
+  v_currency := upper(coalesce(v_receipt.currency, 'NGN'));
+  if v_currency not in ('NGN', 'RMB') then
+    raise exception 'This receipt currency cannot be paid from the wallet';
+  end if;
+
+  insert into wallet_accounts (client_id, currency)
+  values (p_client_id, v_currency)
+  on conflict (client_id, currency) do nothing;
+
+  select * into v_account
+  from wallet_accounts
+  where client_id = p_client_id and currency = v_currency
+  for update;
+
+  if v_account.available_balance < v_receipt.total then
+    raise exception 'Insufficient available wallet balance';
+  end if;
+
+  v_new_balance := v_account.available_balance - v_receipt.total;
+  update wallet_accounts
+  set available_balance = v_new_balance
+  where id = v_account.id;
+
+  update receipts
+  set status = 'paid', paid_at = now()
+  where id = v_receipt.id;
+
+  insert into wallet_transactions (
+    account_id, client_id, currency, entry_type, direction, amount, status,
+    reference_type, reference_id, description, recorded_by, approved_by,
+    approved_at, balance_after
+  ) values (
+    v_account.id, p_client_id, v_currency, 'shipping_charge', 'debit', v_receipt.total, 'completed',
+    'receipt', v_receipt.id, 'Wallet payment for receipt ' || v_receipt.receipt_no,
+    case when p_initiated_by_client then null else auth.uid() end,
+    case when p_initiated_by_client then null else auth.uid() end,
+    now(), v_new_balance
+  ) returning * into v_transaction;
+
+  return v_transaction;
+end;
+$$;
+
+-- Pays a quoted marketplace request from the RMB wallet and records the
+-- request reference in the same transaction as the balance change.
+drop function if exists public.pay_wallet_purchase(uuid, uuid);
+create or replace function public.pay_wallet_purchase(
+  p_client_id uuid,
+  p_purchase_request_id uuid,
+  p_initiated_by_client boolean default false
+)
+returns wallet_transactions language plpgsql security definer set search_path = public as $$
+declare
+  v_purchase purchase_requests;
+  v_account wallet_accounts;
+  v_new_balance numeric(14,2);
+  v_transaction wallet_transactions;
+begin
+  if p_initiated_by_client then
+    if coalesce(auth.role(), '') <> 'service_role' then
+      raise exception 'Client wallet payments must be made through the secure portal';
+    end if;
+  elsif not has_permission('finance') then
+    raise exception 'Finance permission is required';
+  end if;
+
+  select * into v_purchase
+  from purchase_requests
+  where id = p_purchase_request_id
+  for update;
+
+  if not found then
+    raise exception 'Purchase request not found';
+  end if;
+  if v_purchase.client_id <> p_client_id then
+    raise exception 'Purchase request does not belong to this client';
+  end if;
+  if v_purchase.status in ('payment_confirmed', 'purchased', 'unavailable', 'cancelled') then
+    raise exception 'This purchase request cannot be charged';
+  end if;
+  if v_purchase.quoted_amount_rmb is null or v_purchase.quoted_amount_rmb <= 0 then
+    raise exception 'Set a positive RMB quote before charging this purchase request';
+  end if;
+
+  insert into wallet_accounts (client_id, currency)
+  values (p_client_id, 'RMB')
+  on conflict (client_id, currency) do nothing;
+
+  select * into v_account
+  from wallet_accounts
+  where client_id = p_client_id and currency = 'RMB'
+  for update;
+
+  if v_account.available_balance < v_purchase.quoted_amount_rmb then
+    raise exception 'Insufficient available RMB wallet balance';
+  end if;
+
+  v_new_balance := v_account.available_balance - v_purchase.quoted_amount_rmb;
+  update wallet_accounts
+  set available_balance = v_new_balance
+  where id = v_account.id;
+
+  update purchase_requests
+  set status = 'payment_confirmed',
+      handled_by = case when p_initiated_by_client then handled_by else auth.uid() end
+  where id = v_purchase.id;
+
+  insert into wallet_transactions (
+    account_id, client_id, currency, entry_type, direction, amount, status,
+    reference_type, reference_id, description, recorded_by, approved_by,
+    approved_at, balance_after
+  ) values (
+    v_account.id, p_client_id, 'RMB', 'purchase_charge', 'debit', v_purchase.quoted_amount_rmb, 'completed',
+    'purchase_request', v_purchase.id,
+    'Wallet payment for purchase request: ' || coalesce(v_purchase.product_name, v_purchase.platform),
+    case when p_initiated_by_client then null else auth.uid() end,
+    case when p_initiated_by_client then null else auth.uid() end,
+    now(), v_new_balance
+  ) returning * into v_transaction;
+
+  return v_transaction;
+end;
+$$;
+
 revoke all on function public.create_wallet_cash_topup(uuid, text, numeric, text, text, text) from public;
 revoke all on function public.approve_wallet_cash_topup(uuid) from public;
 revoke all on function public.record_wallet_entry(uuid, text, numeric, text, text, uuid, text) from public;
+revoke all on function public.pay_wallet_receipt(uuid, uuid, boolean) from public;
+revoke all on function public.pay_wallet_purchase(uuid, uuid, boolean) from public;
 grant execute on function public.create_wallet_cash_topup(uuid, text, numeric, text, text, text) to authenticated;
 grant execute on function public.approve_wallet_cash_topup(uuid) to authenticated;
 grant execute on function public.record_wallet_entry(uuid, text, numeric, text, text, uuid, text) to authenticated;
+grant execute on function public.pay_wallet_receipt(uuid, uuid, boolean) to authenticated;
+grant execute on function public.pay_wallet_purchase(uuid, uuid, boolean) to authenticated;
+
+notify pgrst, 'reload schema';
 
 -- Generate shipping mark: MY-NNN-XXX
 create or replace function generate_shipping_mark(client_name text)

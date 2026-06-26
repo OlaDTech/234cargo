@@ -105,18 +105,27 @@ The client prepaid balance is intended for cash received at the Nigeria office. 
 
 ### Deploy the protected client balance functions
 
-Run the updated `supabase_schema.sql` first. Then deploy the two Edge Functions included in `supabase/functions/`. They use the platform-provided service-role key internally, so do **not** put that key in Cloudflare or any browser environment variable.
+Deploy the three Edge Functions included in `supabase/functions/`, then run the updated `supabase_schema.sql`. They use the platform-provided service-role key internally, so do **not** put that key in Cloudflare or any browser environment variable.
 
 ```bash
 npx supabase login
 npx supabase link --project-ref YOUR_PROJECT_REF
 npx supabase functions deploy client-login --no-verify-jwt
 npx supabase functions deploy client-wallet --no-verify-jwt
+npx supabase functions deploy client-portal --no-verify-jwt
 ```
 
-After the functions are live, clients should sign out and sign in again once. That creates the private session needed to read their balance. The wallet data has no public database read policy; it is returned only by the `client-wallet` function after it checks that session.
+After the functions are live, clients should sign out and sign in again once. That creates the private session needed to read their portal and balance. Client goods, receipts, messages, purchases, settings, announcements, and suppliers are returned only by `client-portal`; wallet data is returned only by `client-wallet`.
 
-## 8. Hardening before going live
+## 8. Security before going live
+
+### Current model
+
+Client data is private at the database layer. The browser signs clients in through `client-login`, stores only an opaque session token, and receives portal data only from the `client-portal` and `client-wallet` Edge Functions. Those functions use the server-only service-role secret to verify the session and return only the signed-in client's records. Applying the updated schema converts legacy plaintext client passwords to bcrypt hashes.
+
+Deploy the three client functions before running the updated schema so there is no gap in portal access. Keep `SUPABASE_SERVICE_ROLE_KEY` exclusively in Supabase Edge Function secrets; it must never be placed in Vite or Cloudflare environment variables. The `goods-photos` bucket is still public for existing photo URLs, so make it private and issue signed URLs before using the app for confidential shipment images.
+
+### Legacy design (obsolete)
 
 The client portal intentionally skips Supabase Auth (clients log in with phone/shipping mark + password, not email) to match the brief. To make that work, several RLS policies in `supabase_schema.sql` allow public (`anon`) read access, with the app enforcing per-client filtering in the UI rather than the database. Read the security note at the top of `supabase_schema.sql` for two ways to close this gap — the short version: move client login behind a Supabase Edge Function that issues a scoped JWT, and hash passwords with bcrypt instead of storing them in plaintext as the demo schema does.
 
