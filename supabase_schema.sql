@@ -1,5 +1,5 @@
 -- ============================================================
--- OceanAir Logistics — Supabase Database Schema
+-- 234Cargo Logistics — Supabase Database Schema
 -- Run this entire file in your Supabase SQL Editor
 -- ============================================================
 --
@@ -45,7 +45,7 @@ create table if not exists settings (
 );
 
 insert into settings (key, value) values
-  ('company_name', '234 Cargo Logistics'),
+  ('company_name', '234Cargo Logistics'),
   ('china_warehouse_name', 'SinoShip Warehouse Guangzhou'),
   ('china_warehouse_address', '128 Tianhe Rd, Guangzhou, Guangdong 510620'),
   ('china_warehouse_phone', '+86 020-8888-6666'),
@@ -57,7 +57,7 @@ on conflict (key) do nothing;
 update settings set value = '150000' where key = 'sea_rate_cbm' and value = '150';
 update settings set value = '1200' where key = 'sea_rate_kg' and value = '1.20';
 update settings set value = '18000' where key = 'air_rate_kg' and value = '18.00';
-update settings set value = '234 Cargo Logistics' where key = 'company_name' and value = 'OceanAir Logistics';
+update settings set value = '234Cargo Logistics' where key = 'company_name' and value in ('OceanAir Logistics', '234 Cargo Logistics');
 
 -- Sea and air freight can receive goods at different China warehouses. Copy the
 -- legacy shared warehouse details on first run so existing labels keep working

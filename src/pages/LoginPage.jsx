@@ -95,7 +95,7 @@ export default function LoginPage() {
               <span><strong>RMB</strong> purchases</span>
             </div>
           </div>
-          <div className="public-hero-visual" aria-label="234 Cargo shipment dashboard preview">
+          <div className="public-hero-visual" aria-label="234Cargo shipment dashboard preview">
             <div className="public-photo-strip" role="img" aria-label="Cargo containers in transit" />
             <div className="public-route-card">
               <div className="public-route-top">
@@ -157,7 +157,7 @@ export default function LoginPage() {
           {mode === 'client' ? <><label className="input-label">Phone Number or Shipping Mark</label><input className="input-field" placeholder="e.g. 080... or MY-001-ABC" value={identifier} onChange={e => setIdentifier(e.target.value)} onKeyDown={e => onKey(e, handleClientLogin)} autoFocus /><label className="input-label" style={{ marginTop: 14 }}>Password</label><input className="input-field" type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => onKey(e, handleClientLogin)} /></> : <><label className="input-label">Work Email Address</label><input className="input-field" type="email" placeholder="you@234cargo.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => onKey(e, handleStaffLogin)} autoFocus /><label className="input-label" style={{ marginTop: 14 }}>Password</label><input className="input-field" type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => onKey(e, handleStaffLogin)} /></>}
           {error && <div className="banner banner-error" style={{ marginTop: 14 }}>{error}</div>}
           <button className="btn btn-primary btn-full" style={{ marginTop: 18 }} onClick={mode === 'client' ? handleClientLogin : handleStaffLogin} disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
-          <div className="login-help">{mode === 'client' ? 'Use Log out on shared phones. Contact 234 Cargo if you need access help.' : 'Your administrator creates staff and admin accounts.'}</div>
+          <div className="login-help">{mode === 'client' ? 'Use Log out on shared phones. Contact 234Cargo if you need access help.' : 'Your administrator creates staff and admin accounts.'}</div>
         </div>
         {mode !== 'client' && <div className="login-switch"><button onClick={() => openLogin('client')}>Client login</button></div>}
       </div>

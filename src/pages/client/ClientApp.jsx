@@ -204,7 +204,7 @@ export default function ClientApp() {
 
   return (
     <div className="app-shell client-app">
-      <TopNav role="Client Portal" title={settings.company_name || '234 Cargo Logistics'}
+      <TopNav role="Client Portal" title={settings.company_name || '234Cargo Logistics'}
         right={
           <div className="client-header-actions">
             <div className="client-header-avatar">
@@ -460,7 +460,7 @@ export default function ClientApp() {
                 <div key={m.id} className={`chat-row ${m.sender === 'client' ? 'chat-row-out' : 'chat-row-in'}`}>
                   <div className="chat-message">
                     <div className={`chat-meta ${m.sender === 'client' ? 'chat-meta-out' : ''}`}>
-                      {m.sender === 'client' ? 'You' : 'OceanAir Team'} · {fmtAgo(m.created_at)}
+                      {m.sender === 'client' ? 'You' : '234Cargo Team'} · {fmtAgo(m.created_at)}
                     </div>
                     <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
                       {m.message}
@@ -523,9 +523,9 @@ export default function ClientApp() {
 
       {/* Receipt modal */}
       <Modal open={!!selectedReceipt} title="Receipt" onClose={() => setSelectedReceipt(null)}>
-        <ReceiptView receipt={selectedReceipt} client={clientUser} companyName={settings.company_name || '234 Cargo'} />
+        <ReceiptView receipt={selectedReceipt} client={clientUser} companyName={settings.company_name || '234Cargo'} />
         {selectedReceipt?.status === 'unpaid' && <button onClick={() => payReceiptFromWallet(selectedReceipt)} disabled={payingReceipt === selectedReceipt.id} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Wallet size={16} />{payingReceipt === selectedReceipt.id ? 'Paying From Wallet...' : 'Pay With Prepaid Wallet'}</button>}
-        <button onClick={() => downloadReceiptPdf({ receipt: selectedReceipt, client: clientUser, companyName: settings.company_name || '234 Cargo Logistics' })} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Download size={16} />Download PDF Receipt</button>
+        <button onClick={() => downloadReceiptPdf({ receipt: selectedReceipt, client: clientUser, companyName: settings.company_name || '234Cargo Logistics' })} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Download size={16} />Download PDF Receipt</button>
         <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 8 }}>Print A4 Receipt</button>
       </Modal>
 

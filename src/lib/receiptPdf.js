@@ -46,7 +46,7 @@ const makePdf = content => {
   return pdf
 }
 
-export function downloadReceiptPdf({ receipt, client, companyName = '234 Cargo Logistics' }) {
+export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Logistics' }) {
   if (!receipt) return false
 
   let items = []

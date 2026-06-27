@@ -330,11 +330,11 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
     <div className="shipping-label">
       {/* Brand header bar */}
       <div style={{ background: 'var(--teal)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 11, fontFamily: 'Space Grotesk,sans-serif' }}>
-            {(settings.company_name || 'OceanAir').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+        <div style={{ width: 84, height: 30, borderRadius: 7, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 7px' }}>
+          <img src="/234cargo-logo.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'Space Grotesk,sans-serif', letterSpacing: -0.2 }}>{settings.company_name || 'OceanAir Logistics'}</div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'Space Grotesk,sans-serif' }}>{settings.company_name || '234Cargo Logistics'}</div>
           <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 9.5, letterSpacing: 0.3 }}>FREIGHT FORWARDING</div>
         </div>
         <Icons.box size={18} color="rgba(255,255,255,0.85)" />
@@ -372,7 +372,7 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
   )
 }
 
-export function ReceiptView({ receipt, client, companyName = '234 Cargo' }) {
+export function ReceiptView({ receipt, client, companyName = '234Cargo' }) {
   if (!receipt) return null
   const items = typeof receipt.items === 'string' ? JSON.parse(receipt.items) : (receipt.items || [])
   const currency = receipt.currency || 'NGN'
