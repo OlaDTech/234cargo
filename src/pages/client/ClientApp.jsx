@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { getClientPortal, getClientWallet, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
-import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, purchaseStatusMeta, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
+import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, normalizePurchaseVariantItems, purchaseStatusMeta, purchaseVariantNotes, purchaseVariantSummary, purchaseVariantTotal, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
 
 const WALLET_ENTRY_LABELS = {
   cash_topup: 'Wallet top-up',
@@ -172,12 +172,40 @@ export default function ClientApp() {
     catch { toast.error('Allow clipboard access to paste') }
   }
 
+  const updatePurchaseOption = (index, field, value) => {
+    setPurchaseForm(form => {
+      const items = normalizePurchaseVariantItems(form.variant_items, form.variant, form.quantity)
+      return {
+        ...form,
+        variant_items: items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item),
+      }
+    })
+  }
+
+  const addPurchaseOption = () => {
+    setPurchaseForm(form => ({
+      ...form,
+      variant_items: [...normalizePurchaseVariantItems(form.variant_items, form.variant, form.quantity), { variant: '', quantity: '1' }],
+    }))
+  }
+
+  const removePurchaseOption = index => {
+    setPurchaseForm(form => {
+      const nextItems = normalizePurchaseVariantItems(form.variant_items, form.variant, form.quantity).filter((_, itemIndex) => itemIndex !== index)
+      return { ...form, variant_items: nextItems.length ? nextItems : [{ variant: '', quantity: '1' }] }
+    })
+  }
+
   const submitPurchaseRequest = async () => {
     const productLink = marketplaceUrl(purchaseForm.product_link)
     if (!productLink) {
       toast.error('Paste a complete product link that starts with https:// or http://')
       return
     }
+    const optionItems = normalizePurchaseVariantItems(purchaseForm.variant_items, purchaseForm.variant, purchaseForm.quantity)
+    const totalQuantity = purchaseVariantTotal(optionItems)
+    const optionDetails = purchaseVariantNotes(optionItems)
+    const extraDetails = purchaseForm.notes.trim()
 
     setSubmittingPurchase(true)
     try {
@@ -185,9 +213,9 @@ export default function ClientApp() {
         platform: purchaseForm.platform,
         product_link: productLink,
         product_name: purchaseForm.product_name.trim(),
-        variant: purchaseForm.variant.trim(),
-        quantity: Math.max(1, parseInt(purchaseForm.quantity, 10) || 1),
-        notes: purchaseForm.notes.trim(),
+        variant: purchaseVariantSummary(optionItems),
+        quantity: totalQuantity,
+        notes: [optionDetails, extraDetails && `Extra details:\n${extraDetails}`].filter(Boolean).join('\n\n'),
       })
       setPurchaseForm(EMPTY_PURCHASE_REQUEST)
       toast.success('Purchase request sent to our China team')
@@ -357,7 +385,7 @@ export default function ClientApp() {
             <SectionHeader title="More" />
             {[
               { id: 'wallet', title: 'Request Wallet Top-Up', text: 'Upload transfer proof or report cash paid at our office.', Icon: Wallet },
-              { id: 'purchase', title: 'Buy for Me', text: 'Send one product link and choose the quantity you want.', Icon: ShoppingCart },
+              { id: 'purchase', title: 'Buy for Me', text: 'Send one product link with each size, colour, and quantity.', Icon: ShoppingCart },
               { id: 'label', title: 'Shipping Label', text: 'View, print or share your shipping mark label.', Icon: Tag },
               { id: 'suppliers', title: 'Supplier Directory', text: 'Browse the approved supplier directory.', Icon: ShoppingBag },
             ].map(item => (
@@ -460,7 +488,7 @@ export default function ClientApp() {
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Buy From China" />
             <div className="banner banner-info" style={{ marginBottom: 16 }}>
-              Send one product link from 1688, Taobao, or Pinduoduo, then enter how many pieces you want. Our team will confirm the RMB total before buying.
+              Send one product link from 1688, Taobao, or Pinduoduo, then add each size, colour, and quantity you want. Our team will confirm the RMB total before buying.
             </div>
             <div className="card">
               <div className="input-group">
@@ -477,15 +505,16 @@ export default function ClientApp() {
                 <label className="input-label">Product Name <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
                 <input className="input-field" placeholder="For example: Stainless food flask" value={purchaseForm.product_name} onChange={event => setPurchaseForm(form => ({ ...form, product_name: event.target.value }))} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 96px', gap: 10 }}>
-                <div className="input-group">
-                  <label className="input-label">Colour, size, or variant</label>
-                  <input className="input-field" placeholder="For example: Black, 42" value={purchaseForm.variant} onChange={event => setPurchaseForm(form => ({ ...form, variant: event.target.value }))} />
-                </div>
-                <div className="input-group">
-                  <label className="input-label">Quantity for this link</label>
-                  <input className="input-field" type="number" min="1" inputMode="numeric" value={purchaseForm.quantity} onChange={event => setPurchaseForm(form => ({ ...form, quantity: event.target.value }))} />
-                </div>
+              <div className="input-group">
+                <label className="input-label">Sizes, colours, and quantities</label>
+                {normalizePurchaseVariantItems(purchaseForm.variant_items, purchaseForm.variant, purchaseForm.quantity).map((item, index) => (
+                  <div key={index} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <input className="input-field" placeholder="For example: Black shoes size 34" value={item.variant} onChange={event => updatePurchaseOption(index, 'variant', event.target.value)} />
+                    <input className="input-field" aria-label="Quantity" type="number" min="1" inputMode="numeric" value={item.quantity} onChange={event => updatePurchaseOption(index, 'quantity', event.target.value)} />
+                    <button type="button" className="btn btn-xs btn-danger" onClick={() => removePurchaseOption(index)} disabled={normalizePurchaseVariantItems(purchaseForm.variant_items, purchaseForm.variant, purchaseForm.quantity).length === 1} title="Remove this option" aria-label="Remove this option"><Trash2 size={13} /></button>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-xs btn-secondary" onClick={addPurchaseOption}><Plus size={13} />Add another size or colour</button>
               </div>
               <div className="input-group">
                 <label className="input-label">Extra Details <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>

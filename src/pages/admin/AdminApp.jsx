@@ -245,19 +245,69 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const receiptWasWalletPaid = receipt => walletTransactions.some(entry => entry.reference_type === 'receipt' && entry.reference_id === receipt.id && entry.status === 'completed')
+
+  const deleteErrorMessage = (error, fallback) => {
+    const message = String(error?.message || '')
+    if (error?.code === '42501' || message.toLowerCase().includes('row-level security')) {
+      return 'Delete is blocked by database permission. Run the latest supabase_schema.sql in Supabase SQL Editor, then try again.'
+    }
+    if (message.toLowerCase().includes('foreign key')) {
+      return 'This record is linked to another record. Delete the linked receipt first, then delete the goods.'
+    }
+    return message || fallback
+  }
+
+  const deleteReceiptRecord = async receipt => {
+    if (!receipt) return false
+    if (receipt.status !== 'unpaid' || receiptWasWalletPaid(receipt)) {
+      toast.error('Only unpaid receipts can be deleted. Record a refund for wallet-paid receipts.')
+      return false
+    }
+    const { error } = await supabase.from('receipts').delete().eq('id', receipt.id)
+    if (error) {
+      toast.error(deleteErrorMessage(error, 'Could not delete this receipt.'))
+      return false
+    }
+    return true
+  }
+
   const deleteReceipt = async receipt => {
     if (!receipt) return
-    const walletPaid = walletTransactions.some(entry => entry.reference_type === 'receipt' && entry.reference_id === receipt.id && entry.status === 'completed')
-    if (receipt.status !== 'unpaid' || walletPaid) {
-      toast.error('Only unpaid receipts can be deleted. Record a refund for wallet-paid receipts.')
-      return
-    }
     if (!window.confirm(`Delete receipt ${receipt.receipt_no}? This cannot be undone.`)) return
-    const { error } = await supabase.from('receipts').delete().eq('id', receipt.id)
-    if (error) { toast.error(error.message); return }
+    const deleted = await deleteReceiptRecord(receipt)
+    if (!deleted) return
     toast.success('Receipt deleted')
     setShowReceiptView(null)
     setShowReceiptEdit(null)
+    loadAll()
+  }
+
+  const deleteGoodsRecord = async goodsRecord => {
+    if (!goodsRecord) return
+    const linkedReceipts = receipts.filter(receipt => receipt.goods_id === goodsRecord.id)
+    const blockedReceipt = linkedReceipts.find(receipt => receipt.status !== 'unpaid' || receiptWasWalletPaid(receipt))
+    if (blockedReceipt) {
+      toast.error(`Receipt ${blockedReceipt.receipt_no} is paid, so this goods record cannot be deleted. Record a correction/refund instead.`)
+      return
+    }
+    const confirmText = linkedReceipts.length
+      ? `Delete ${goodsRecord.description} and its ${linkedReceipts.length} unpaid receipt${linkedReceipts.length === 1 ? '' : 's'}? This cannot be undone.`
+      : `Delete ${goodsRecord.description}? This cannot be undone.`
+    if (!window.confirm(confirmText)) return
+
+    for (const receipt of linkedReceipts) {
+      const deleted = await deleteReceiptRecord(receipt)
+      if (!deleted) return
+    }
+
+    const { error } = await supabase.from('goods').delete().eq('id', goodsRecord.id)
+    if (error) {
+      toast.error(deleteErrorMessage(error, 'Could not delete this goods record.'))
+      return
+    }
+    toast.success('Goods record deleted')
+    setShowEditGoods(null)
     loadAll()
   }
 
@@ -976,7 +1026,7 @@ export default function AdminApp() {
                   {/* Receipt */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => setShowEditGoods(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
-                    <button onClick={() => removeRecord('goods', g.id, 'goods record')} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
+                    <button onClick={() => deleteGoodsRecord(g)} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
                     {!hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
                       <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
                     ) : hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
@@ -1543,6 +1593,7 @@ export default function AdminApp() {
             </div>
             <PhotoGallery photos={showEditGoods.photos} />
             <button className="btn btn-primary btn-full" onClick={saveEditedGoods} style={{ marginTop: 14 }}>Save Changes</button>
+            <button className="btn btn-danger btn-full" onClick={() => deleteGoodsRecord(showEditGoods)} style={{ marginTop: 8 }}><Trash2 size={15} />Delete Mistaken Goods</button>
           </>
         )}
       </Modal>

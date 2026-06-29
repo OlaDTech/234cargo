@@ -21,6 +21,7 @@ export const EMPTY_PURCHASE_REQUEST = {
   product_name: '',
   variant: '',
   quantity: '1',
+  variant_items: [{ variant: '', quantity: '1' }],
   notes: '',
 }
 
@@ -39,4 +40,38 @@ export function marketplaceUrl(value) {
   } catch {
     return null
   }
+}
+
+function positiveQuantity(value) {
+  return Math.min(10000, Math.max(1, Number.parseInt(String(value || 1), 10) || 1))
+}
+
+export function normalizePurchaseVariantItems(items, fallbackVariant = '', fallbackQuantity = '1') {
+  const source = Array.isArray(items) && items.length
+    ? items
+    : [{ variant: fallbackVariant, quantity: fallbackQuantity }]
+
+  const normalized = source.map(item => ({
+    variant: String(item?.variant || '').trim(),
+    quantity: positiveQuantity(item?.quantity),
+  }))
+
+  return normalized.length ? normalized : [{ variant: '', quantity: 1 }]
+}
+
+export function purchaseVariantTotal(items) {
+  return normalizePurchaseVariantItems(items).reduce((sum, item) => sum + item.quantity, 0)
+}
+
+export function purchaseVariantSummary(items) {
+  return normalizePurchaseVariantItems(items)
+    .map(item => `${item.variant || 'Default option'} x ${item.quantity}`)
+    .join('; ')
+}
+
+export function purchaseVariantNotes(items) {
+  return [
+    'Requested options:',
+    ...normalizePurchaseVariantItems(items).map(item => `- ${item.variant || 'Default option'}: ${item.quantity} piece${item.quantity === 1 ? '' : 's'}`),
+  ].join('\n')
 }

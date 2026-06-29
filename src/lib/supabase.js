@@ -68,9 +68,29 @@ export async function getClientWallet(sessionToken) {
     method: 'GET',
     headers: { Authorization: `Bearer ${sessionToken}` },
   })
-  if (error) throw new Error('Could not load your prepaid balance. Please sign in again if the problem continues.')
+  if (error) throw new Error(await functionErrorMessage(error, data, 'Could not load your prepaid balance. Please sign in again if the problem continues.'))
   if (data?.error) throw new Error(data.error)
   return data
+}
+
+async function functionErrorMessage(error, data, fallback) {
+  if (data?.error) return data.error
+
+  const response = error?.context
+  if (response && typeof response.clone === 'function') {
+    try {
+      const body = await response.clone().json()
+      if (body?.error) return body.error
+      if (body?.message) return body.message
+    } catch {
+      // Fall through to the generic fallback below.
+    }
+  }
+
+  if (error?.message && !String(error.message).toLowerCase().includes('edge function returned')) {
+    return error.message
+  }
+  return fallback
 }
 
 async function fileToBase64Payload(file) {
@@ -110,7 +130,7 @@ export async function submitClientTopUpRequest(sessionToken, payload) {
       proof_file,
     },
   })
-  if (error) throw new Error('Could not send your top-up request. Please try again.')
+  if (error) throw new Error(await functionErrorMessage(error, data, 'Could not send your top-up request. Please try again.'))
   if (data?.error) throw new Error(data.error)
   return data
 }
@@ -121,7 +141,7 @@ async function invokeClientPortal(sessionToken, options = {}) {
     ...options,
     headers: { Authorization: `Bearer ${sessionToken}`, ...(options.headers || {}) },
   })
-  if (error) throw new Error('Could not reach your secure client portal. Please sign in again if the problem continues.')
+  if (error) throw new Error(await functionErrorMessage(error, data, 'Could not reach your secure client portal. Please sign in again if the problem continues.'))
   if (data?.error) throw new Error(data.error)
   return data
 }
