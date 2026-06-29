@@ -69,6 +69,49 @@ export async function getClientWallet(sessionToken) {
     headers: { Authorization: `Bearer ${sessionToken}` },
   })
   if (error) throw new Error('Could not load your prepaid balance. Please sign in again if the problem continues.')
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+async function fileToBase64Payload(file) {
+  if (!file) return null
+  const prepared = file.type?.startsWith('image/') ? await compressImage(file, 1200, 0.78) : file
+  if (prepared.size > 5 * 1024 * 1024) {
+    throw new Error('Receipt file is too large. Please upload an image or PDF under 5MB.')
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Could not read the receipt file.'))
+    reader.readAsDataURL(prepared)
+  })
+  const [, base64 = ''] = dataUrl.split(',')
+  return {
+    name: prepared.name || file.name || 'payment-receipt',
+    type: prepared.type || file.type || 'application/octet-stream',
+    data: base64,
+  }
+}
+
+export async function submitClientTopUpRequest(sessionToken, payload) {
+  if (!sessionToken) throw new Error('Sign out and sign back in to request a wallet top-up.')
+  const proof_file = await fileToBase64Payload(payload.proofFile)
+  const { data, error } = await supabase.functions.invoke('client-wallet', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body: {
+      action: 'request_topup',
+      currency: payload.currency,
+      amount: payload.amount,
+      payment_method: payload.paymentMethod,
+      cash_reference: payload.reference || '',
+      office_location: payload.officeLocation || '',
+      description: payload.description || '',
+      proof_file,
+    },
+  })
+  if (error) throw new Error('Could not send your top-up request. Please try again.')
+  if (data?.error) throw new Error(data.error)
   return data
 }
 
@@ -304,6 +347,18 @@ export async function uploadGoodsPhoto(file, goodsId) {
     .upload(path, compressed, { upsert: false, contentType: compressed.type || 'image/jpeg' })
   if (error) throw error
   const { data: urlData } = supabase.storage.from('goods-photos').getPublicUrl(path)
+  return urlData.publicUrl
+}
+
+export async function uploadSupplierPhoto(file, supplierId) {
+  const compressed = await compressImage(file, 1200, 0.76)
+  const ext = compressed.name.split('.').pop() || 'jpg'
+  const path = `${supplierId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+  const { error } = await supabase.storage
+    .from('supplier-photos')
+    .upload(path, compressed, { upsert: false, contentType: compressed.type || 'image/jpeg' })
+  if (error) throw error
+  const { data: urlData } = supabase.storage.from('supplier-photos').getPublicUrl(path)
   return urlData.publicUrl
 }
 

@@ -1,20 +1,29 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { getClientPortal, getClientWallet, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest } from '../../lib/supabase'
+import { getClientPortal, getClientWallet, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
 import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, purchaseStatusMeta, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
 
 const WALLET_ENTRY_LABELS = {
-  cash_topup: 'Cash top-up',
+  cash_topup: 'Wallet top-up',
   shipping_charge: 'Shipping charge',
   purchase_charge: 'Purchase charge',
   refund: 'Refund',
 }
 
 const walletBalanceFor = (wallet, currency) => wallet?.balances?.find(balance => balance.currency === currency)?.available_balance || 0
+
+const TOP_UP_DEFAULT = {
+  currency: 'NGN',
+  amount: '',
+  paymentMethod: 'bank_transfer',
+  reference: '',
+  officeLocation: 'Nigeria office',
+  description: '',
+}
 
 export default function ClientApp() {
   const { clientUser, clientSessionToken, signOut } = useAuth()
@@ -40,6 +49,9 @@ export default function ClientApp() {
   const [wallet, setWallet] = useState(null)
   const [walletLoading, setWalletLoading] = useState(false)
   const [walletError, setWalletError] = useState('')
+  const [topUpForm, setTopUpForm] = useState(TOP_UP_DEFAULT)
+  const [topUpProof, setTopUpProof] = useState(null)
+  const [submittingTopUp, setSubmittingTopUp] = useState(false)
   const chatListRef = useRef(null)
 
   const loadWallet = useCallback(async () => {
@@ -115,6 +127,39 @@ export default function ClientApp() {
 
   const refreshWallet = async () => {
     if (await loadWallet()) toast.success('Prepaid balance refreshed')
+  }
+
+  const submitTopUpRequest = async () => {
+    const amount = Number(topUpForm.amount)
+    if (!amount || amount <= 0) {
+      toast.error('Enter the amount you want to top up')
+      return
+    }
+    if (topUpForm.paymentMethod === 'bank_transfer' && !topUpProof) {
+      toast.error('Upload your bank transfer receipt')
+      return
+    }
+
+    setSubmittingTopUp(true)
+    try {
+      await submitClientTopUpRequest(clientSessionToken, {
+        currency: topUpForm.currency,
+        amount,
+        paymentMethod: topUpForm.paymentMethod,
+        reference: topUpForm.reference.trim(),
+        officeLocation: topUpForm.officeLocation.trim(),
+        description: topUpForm.description.trim(),
+        proofFile: topUpProof,
+      })
+      setTopUpForm(TOP_UP_DEFAULT)
+      setTopUpProof(null)
+      toast.success('Top-up request sent for verification')
+      await loadWallet()
+    } catch (error) {
+      toast.error(error.message || 'Could not submit your top-up request')
+    } finally {
+      setSubmittingTopUp(false)
+    }
   }
 
   const copyMessage = async text => {
@@ -239,7 +284,7 @@ export default function ClientApp() {
 
             <button type="button" className="client-wallet-card" onClick={() => setTab('wallet')}>
               <span className="client-wallet-icon"><Wallet size={21} /></span>
-              <span className="client-wallet-copy"><small>Prepaid Balance</small><strong>{walletLoading ? 'Loading balance...' : wallet ? `${formatMoney(walletBalanceFor(wallet, 'NGN'), 'NGN')} / ${formatMoney(walletBalanceFor(wallet, 'RMB'), 'RMB')}` : 'View prepaid balance'}</strong><em>Top up in cash at our Nigeria office. Credits are verified before use.</em></span>
+              <span className="client-wallet-copy"><small>Prepaid Balance</small><strong>{walletLoading ? 'Loading balance...' : wallet ? `${formatMoney(walletBalanceFor(wallet, 'NGN'), 'NGN')} / ${formatMoney(walletBalanceFor(wallet, 'RMB'), 'RMB')}` : 'View prepaid balance'}</strong><em>Request a top-up by office cash or bank transfer. Credits are verified before use.</em></span>
               <ArrowRight size={19} />
             </button>
 
@@ -311,8 +356,8 @@ export default function ClientApp() {
           <>
             <SectionHeader title="More" />
             {[
-              { id: 'wallet', title: 'Prepaid Balance', text: 'View your Naira and RMB balance, credits, and charges.', Icon: Wallet },
-              { id: 'purchase', title: 'Buy for Me', text: 'Send a 1688, Taobao or Pinduoduo link. We buy and ship it for you.', Icon: ShoppingCart },
+              { id: 'wallet', title: 'Request Wallet Top-Up', text: 'Upload transfer proof or report cash paid at our office.', Icon: Wallet },
+              { id: 'purchase', title: 'Buy for Me', text: 'Send one product link and choose the quantity you want.', Icon: ShoppingCart },
               { id: 'label', title: 'Shipping Label', text: 'View, print or share your shipping mark label.', Icon: Tag },
               { id: 'suppliers', title: 'Supplier Directory', text: 'Browse the approved supplier directory.', Icon: ShoppingBag },
             ].map(item => (
@@ -328,11 +373,67 @@ export default function ClientApp() {
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Prepaid Balance" action={<button className="btn btn-xs btn-secondary" onClick={refreshWallet} disabled={walletLoading} title="Refresh prepaid balance"><RefreshCw size={13} className={walletLoading ? 'spin' : ''} />Refresh</button>} />
-            <div className="banner banner-info" style={{ marginBottom: 16 }}>Pay cash at our Nigeria office with your shipping mark. Your balance becomes available after a finance team member verifies the payment.</div>
+            <div className="banner banner-info" style={{ marginBottom: 16 }}>Request a wallet top-up after paying by bank transfer or cash at our office. Your balance becomes available after finance verifies the payment.</div>
             {walletLoading && !wallet ? <SkeletonList n={3} /> : walletError ? (
               <div className="card client-wallet-empty"><Wallet size={24} /><strong>Secure balance unavailable</strong><p>{walletError}</p><button className="btn btn-primary" onClick={signOut}>Sign Out</button></div>
             ) : (
               <>
+                <div className="card">
+                  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>Request Top-Up</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="input-group">
+                      <label className="input-label">Currency</label>
+                      <select className="input-field" value={topUpForm.currency} onChange={event => setTopUpForm(form => ({ ...form, currency: event.target.value }))}>
+                        <option value="NGN">NGN</option>
+                        <option value="RMB">RMB</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label">Amount</label>
+                      <input className="input-field" type="number" min="0.01" step="0.01" inputMode="decimal" value={topUpForm.amount} onChange={event => setTopUpForm(form => ({ ...form, amount: event.target.value }))} placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Payment Method</label>
+                    <select className="input-field" value={topUpForm.paymentMethod} onChange={event => setTopUpForm(form => ({ ...form, paymentMethod: event.target.value, reference: '' }))}>
+                      <option value="bank_transfer">Bank transfer</option>
+                      <option value="cash_office">Cash to our office</option>
+                    </select>
+                  </div>
+                  {topUpForm.paymentMethod === 'cash_office' ? (
+                    <>
+                      <div className="input-group">
+                        <label className="input-label">Office</label>
+                        <input className="input-field" value={topUpForm.officeLocation} onChange={event => setTopUpForm(form => ({ ...form, officeLocation: event.target.value }))} placeholder="Nigeria office" />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Cash Receipt or Reference <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                        <input className="input-field" value={topUpForm.reference} onChange={event => setTopUpForm(form => ({ ...form, reference: event.target.value }))} placeholder="For example: CASH-2026-001" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="input-group">
+                        <label className="input-label">Transfer Reference <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                        <input className="input-field" value={topUpForm.reference} onChange={event => setTopUpForm(form => ({ ...form, reference: event.target.value }))} placeholder="Bank reference or sender name" />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label">Transaction Receipt</label>
+                        <label className="btn btn-secondary btn-full" style={{ justifyContent: 'center', cursor: 'pointer' }}>
+                          <Upload size={16} />{topUpProof ? topUpProof.name : 'Upload Receipt'}
+                          <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: 'none' }} onChange={event => setTopUpProof(event.target.files?.[0] || null)} />
+                        </label>
+                      </div>
+                    </>
+                  )}
+                  <div className="input-group">
+                    <label className="input-label">Note <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+                    <textarea className="input-field" rows="3" value={topUpForm.description} onChange={event => setTopUpForm(form => ({ ...form, description: event.target.value }))} placeholder="Anything finance should know about this payment." />
+                  </div>
+                  <button className="btn btn-primary btn-full" onClick={submitTopUpRequest} disabled={submittingTopUp}>
+                    <Wallet size={16} />{submittingTopUp ? 'Sending Request...' : 'Send Top-Up Request'}
+                  </button>
+                </div>
                 <div className="wallet-balance-grid">
                   {['NGN', 'RMB'].map(currency => <div key={currency} className="wallet-balance-card"><span>{currency === 'NGN' ? 'Naira balance' : 'RMB balance'}</span><strong>{formatMoney(walletBalanceFor(wallet, currency), currency)}</strong><small>Available to use</small></div>)}
                 </div>
@@ -340,9 +441,11 @@ export default function ClientApp() {
                 {wallet?.transactions?.length ? wallet.transactions.map(transaction => {
                   const isCredit = transaction.direction === 'credit'
                   const statusLabel = transaction.status === 'pending' ? 'Awaiting verification' : transaction.status === 'completed' ? 'Completed' : transaction.status
+                  const methodLabel = transaction.payment_method === 'bank_transfer' ? 'Bank transfer' : transaction.payment_method === 'cash_office' ? 'Cash to office' : ''
                   return <div key={transaction.id} className="client-wallet-transaction">
                     <span className={`client-wallet-direction ${isCredit ? 'credit' : 'debit'}`}>{isCredit ? '+' : '-'}</span>
                     <span className="client-wallet-transaction-copy"><strong>{WALLET_ENTRY_LABELS[transaction.entry_type] || 'Balance activity'}</strong><small>{transaction.description || statusLabel} · {fmtDate(transaction.created_at)}</small></span>
+                    {(methodLabel || transaction.payment_proof_url) && <span className="client-wallet-transaction-copy" style={{ gridColumn: '2 / 3', gridRow: 2, marginTop: -6 }}><small>{methodLabel}{transaction.payment_proof_url ? <> · <a href={transaction.payment_proof_url} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>Receipt</a></> : null}</small></span>}
                     <span className="client-wallet-transaction-amount"><strong className={isCredit ? 'credit' : 'debit'}>{isCredit ? '+' : '-'}{formatMoney(transaction.amount, transaction.currency)}</strong><small>{statusLabel}</small></span>
                   </div>
                 }) : <EmptyState icon="receipt" title="No balance activity yet" text="Verified cash top-ups and shipping or purchase charges will appear here." />}
@@ -357,7 +460,7 @@ export default function ClientApp() {
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Buy From China" />
             <div className="banner banner-info" style={{ marginBottom: 16 }}>
-              Send a product link from 1688, Taobao, or Pinduoduo. Our team will confirm the RMB total and payment details before buying.
+              Send one product link from 1688, Taobao, or Pinduoduo, then enter how many pieces you want. Our team will confirm the RMB total before buying.
             </div>
             <div className="card">
               <div className="input-group">
@@ -380,7 +483,7 @@ export default function ClientApp() {
                   <input className="input-field" placeholder="For example: Black, 42" value={purchaseForm.variant} onChange={event => setPurchaseForm(form => ({ ...form, variant: event.target.value }))} />
                 </div>
                 <div className="input-group">
-                  <label className="input-label">Quantity</label>
+                  <label className="input-label">Quantity for this link</label>
                   <input className="input-field" type="number" min="1" inputMode="numeric" value={purchaseForm.quantity} onChange={event => setPurchaseForm(form => ({ ...form, quantity: event.target.value }))} />
                 </div>
               </div>
@@ -438,6 +541,7 @@ export default function ClientApp() {
             {loading ? <SkeletonList /> : suppliers.length === 0 ? <EmptyState icon="store" title="No suppliers listed yet" /> : (
               suppliers.map(s => (
                 <div key={s.id} className="card">
+                  <PhotoGallery photos={s.photos?.slice(0, 4)} compact />
                   <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{s.name}</div>
                   <span style={{ background: 'var(--info-bg)', color: 'var(--info)', fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>{s.category}</span>
                   <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 8 }}>{s.address}</div>

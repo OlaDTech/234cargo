@@ -60,7 +60,7 @@ Deno.serve(async req => {
         admin.from('clients').select('id, full_name, phone, country, state, shipping_mark, notes, created_at, updated_at').eq('id', clientId).single(),
         admin.from('goods').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
         admin.from('announcements').select('id, title, body, is_important, created_at').order('created_at', { ascending: false }),
-        admin.from('suppliers').select('id, name, contact, category, address, notes, created_at').order('name'),
+        admin.from('suppliers').select('id, name, contact, category, address, photos, notes, created_at').order('name'),
         admin.from('messages').select('id, sender, message, is_read, created_at').eq('client_id', clientId).order('created_at'),
         admin.from('receipts').select('id, receipt_no, goods_id, items, subtotal, discount, total, currency, status, issued_at, paid_at').eq('client_id', clientId).order('issued_at', { ascending: false }),
         admin.from('settings').select('key, value'),

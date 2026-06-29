@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw, ShoppingCart, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, payWalletPurchase, payWalletReceipt, recordWalletEntry, supabase, updateClient } from '../../lib/supabase'
-import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
+import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, payWalletPurchase, payWalletReceipt, recordWalletEntry, supabase, updateClient, uploadSupplierPhoto } from '../../lib/supabase'
+import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, PhotoUploader, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
@@ -82,6 +82,8 @@ export default function AdminApp() {
 
   const [newAnn, setNewAnn] = useState({ title: '', body: '', is_important: false })
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
+  const [newSupplierPhotos, setNewSupplierPhotos] = useState([])
+  const [uploadingSupplierPhotos, setUploadingSupplierPhotos] = useState(false)
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou → Port Klang', status: 'loading', departure_date: '', arrival_date: '' })
   const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
   const [receiptForm, setReceiptForm] = useState({ discount: 0 })
@@ -243,6 +245,22 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const deleteReceipt = async receipt => {
+    if (!receipt) return
+    const walletPaid = walletTransactions.some(entry => entry.reference_type === 'receipt' && entry.reference_id === receipt.id && entry.status === 'completed')
+    if (receipt.status !== 'unpaid' || walletPaid) {
+      toast.error('Only unpaid receipts can be deleted. Record a refund for wallet-paid receipts.')
+      return
+    }
+    if (!window.confirm(`Delete receipt ${receipt.receipt_no}? This cannot be undone.`)) return
+    const { error } = await supabase.from('receipts').delete().eq('id', receipt.id)
+    if (error) { toast.error(error.message); return }
+    toast.success('Receipt deleted')
+    setShowReceiptView(null)
+    setShowReceiptEdit(null)
+    loadAll()
+  }
+
   const sendReply = async () => {
     if (!replyText.trim() || !showMsgThread) return
     await supabase.from('messages').insert({ client_id: showMsgThread.id, sender: 'admin', message: replyText.trim() })
@@ -258,6 +276,58 @@ export default function AdminApp() {
   const pasteReply = async () => {
     try { setReplyText(await navigator.clipboard.readText()) }
     catch { toast.error('Allow clipboard access to paste') }
+  }
+
+  const addSupplierPhotos = files => {
+    const selected = files.slice(0, Math.max(0, 6 - newSupplierPhotos.length)).map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }))
+    setNewSupplierPhotos(prev => [...prev, ...selected])
+  }
+
+  const removeSupplierPhoto = index => {
+    setNewSupplierPhotos(prev => {
+      const item = prev[index]
+      if (item?.preview) URL.revokeObjectURL(item.preview)
+      return prev.filter((_, itemIndex) => itemIndex !== index)
+    })
+  }
+
+  const resetSupplierForm = () => {
+    newSupplierPhotos.forEach(item => item.preview && URL.revokeObjectURL(item.preview))
+    setNewSupplierPhotos([])
+    setNewSup({ name: '', contact: '', category: '', address: '', notes: '' })
+  }
+
+  const saveSupplier = async () => {
+    if (!newSup.name.trim()) return
+    setUploadingSupplierPhotos(true)
+    try {
+      const { data: supplier, error } = await supabase
+        .from('suppliers')
+        .insert({ ...newSup, name: newSup.name.trim(), photos: [] })
+        .select()
+        .single()
+      if (error) throw error
+
+      const photoUrls = newSupplierPhotos.length
+        ? await Promise.all(newSupplierPhotos.map(item => uploadSupplierPhoto(item.file, supplier.id)))
+        : []
+      if (photoUrls.length) {
+        const { error: updateError } = await supabase.from('suppliers').update({ photos: photoUrls }).eq('id', supplier.id)
+        if (updateError) throw updateError
+      }
+
+      toast.success('Supplier added!')
+      setShowAddSup(false)
+      resetSupplierForm()
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not add supplier')
+    } finally {
+      setUploadingSupplierPhotos(false)
+    }
   }
 
   const deleteMessage = async id => {
@@ -840,6 +910,7 @@ export default function AdminApp() {
             <SectionHeader title="Suppliers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddSup(true)}>+ Add</button>} />
             {suppliers.map(s => (
               <div key={s.id} className="card">
+                <PhotoGallery photos={s.photos?.slice(0, 4)} compact />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{s.name}</div>
@@ -951,7 +1022,7 @@ export default function AdminApp() {
               (hasPermission('goods') || hasPermission('containers')) && { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
               hasPermission('messages') && { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
               hasPermission('purchases') && { id: 'purchases', title: 'Purchase Requests', text: `${stats.purchases || 0} open request${stats.purchases === 1 ? '' : 's'} from clients.`, Icon: ShoppingCart },
-              hasPermission('finance') && { id: 'wallet', title: 'Client Prepaid Balances', text: `${walletTransactions.filter(entry => entry.status === 'pending').length} cash top-up${walletTransactions.filter(entry => entry.status === 'pending').length === 1 ? '' : 's'} awaiting verification.`, Icon: Wallet },
+              hasPermission('finance') && { id: 'wallet', title: 'Client Prepaid Balances', text: `${walletTransactions.filter(entry => entry.status === 'pending').length} top-up request${walletTransactions.filter(entry => entry.status === 'pending').length === 1 ? '' : 's'} awaiting verification.`, Icon: Wallet },
               isAdmin && { id: 'settings', title: 'Settings and Staff Access', text: 'Company settings, staff permissions, suppliers and announcements.', Icon: Settings },
             ].filter(Boolean).map(item => (
               <button key={item.id} className="more-menu-item" onClick={() => setTab(item.id)}>
@@ -1008,7 +1079,7 @@ export default function AdminApp() {
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Client Prepaid Balances" action={<button className="btn btn-sm btn-primary" onClick={openWalletTopUp}><Wallet size={14} />Cash Top-Up</button>} />
-            <div className="banner banner-info" style={{ marginBottom: 16 }}>Cash payments are recorded first, then a different finance user verifies them. Balances can only be charged through the ledger below.</div>
+            <div className="banner banner-info" style={{ marginBottom: 16 }}>Client top-up requests and staff-recorded cash payments stay pending until finance verifies them. Balances can only be charged through the ledger below.</div>
 
             <div className="wallet-summary-grid">
               <div className="wallet-summary-card is-teal"><small>Total NGN</small><strong>{formatMoney(walletNgnTotal, 'NGN')}</strong></div>
@@ -1016,14 +1087,16 @@ export default function AdminApp() {
               <div className="wallet-summary-card is-blue"><small>Pending</small><strong>{pendingWalletTopUps}</strong></div>
             </div>
 
-            <SectionHeader title="Cash Top-Ups Awaiting Verification" />
-            {walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length === 0 ? <EmptyState icon="receipt" title="No cash top-ups awaiting verification" text="New cash deposits will appear here until a second finance user approves them." /> : walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').map(entry => (
+            <SectionHeader title="Top-Ups Awaiting Verification" />
+            {walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length === 0 ? <EmptyState icon="receipt" title="No top-ups awaiting verification" text="Client top-up requests and cash deposits will appear here until finance approves them." /> : walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').map(entry => (
               <div key={entry.id} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                   <div><div style={{ fontWeight: 800 }}>{entry.client?.full_name || 'Client'}</div><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>{entry.client?.shipping_mark} · {fmtDateTime(entry.created_at)}</div></div>
                   <strong style={{ color: 'var(--green)', whiteSpace: 'nowrap' }}>+ {formatMoney(entry.amount, entry.currency)}</strong>
                 </div>
                 <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10 }}>Cash reference: {entry.cash_reference || 'Not recorded'}{entry.description ? ` · ${entry.description}` : ''}</div>
+                <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 6 }}>Method: {entry.payment_method === 'bank_transfer' ? 'Bank transfer' : 'Cash to office'}{entry.payment_proof_url ? ' · Receipt uploaded' : ''}</div>
+                {entry.payment_proof_url && <a className="btn btn-xs btn-secondary" href={entry.payment_proof_url} target="_blank" rel="noreferrer" style={{ marginTop: 10, display: 'inline-flex' }}><ReceiptText size={13} />View Receipt</a>}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}><button className="btn btn-sm btn-primary" onClick={() => approveWalletTopUp(entry)} disabled={entry.recorded_by === profile?.id} title={entry.recorded_by === profile?.id ? 'Another finance user must verify this cash top-up' : 'Approve cash top-up'}><CheckCircle2 size={14} />Approve</button></div>
               </div>
             ))}
@@ -1039,7 +1112,7 @@ export default function AdminApp() {
               </div>
             ))}
 
-            <SectionHeader title="Recent Wallet Ledger" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-wallet-ledger', walletTransactions.map(entry => ({ date: entry.created_at, client: entry.client?.full_name, shipping_mark: entry.client?.shipping_mark, currency: entry.currency, type: entry.entry_type, direction: entry.direction, amount: entry.amount, status: entry.status, reference_type: entry.reference_type, reference_id: entry.reference_id, balance_after: entry.balance_after, description: entry.description })))}><Download size={13} />Export</button>} />
+            <SectionHeader title="Recent Wallet Ledger" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-wallet-ledger', walletTransactions.map(entry => ({ date: entry.created_at, client: entry.client?.full_name, shipping_mark: entry.client?.shipping_mark, currency: entry.currency, type: entry.entry_type, direction: entry.direction, amount: entry.amount, status: entry.status, payment_method: entry.payment_method, cash_reference: entry.cash_reference, payment_proof_url: entry.payment_proof_url, reference_type: entry.reference_type, reference_id: entry.reference_id, balance_after: entry.balance_after, description: entry.description })))}><Download size={13} />Export</button>} />
             {walletTransactions.length === 0 ? <EmptyState icon="receipt" title="No wallet entries yet" text="Top-ups, shipping charges, purchase charges, and refunds will appear here." /> : walletTransactions.slice(0, 40).map(entry => {
               const receipt = entry.reference_type === 'receipt' ? receipts.find(item => item.id === entry.reference_id) : null
               const purchase = entry.reference_type === 'purchase_request' ? purchaseRequests.find(item => item.id === entry.reference_id) : null
@@ -1048,6 +1121,7 @@ export default function AdminApp() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}><div><div style={{ fontWeight: 700, fontSize: 14 }}>{entry.entry_type.replace('_', ' ')}</div><div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 3 }}>{entry.client?.full_name} · {fmtDateTime(entry.created_at)}</div></div><div style={{ textAlign: 'right' }}><strong style={{ color: entry.direction === 'credit' ? 'var(--green)' : 'var(--red)', fontSize: 13 }}>{entry.direction === 'credit' ? '+' : '-'} {formatMoney(entry.amount, entry.currency)}</strong><div style={{ color: entry.status === 'completed' ? 'var(--green)' : 'var(--amber)', fontSize: 11, marginTop: 3 }}>{entry.status === 'pending' ? 'Awaiting verification' : entry.status}</div></div></div>
                 {entry.description && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>{entry.description}</div>}
                 {reference && <div style={{ color: 'var(--teal-d)', fontSize: 12, fontWeight: 700, marginTop: 6 }}>{reference}</div>}
+                {entry.payment_proof_url && <a href={entry.payment_proof_url} target="_blank" rel="noreferrer" style={{ color: 'var(--teal-d)', fontSize: 12, fontWeight: 700, marginTop: 6, display: 'inline-block' }}>View payment receipt</a>}
               </div>
             })}
           </>
@@ -1198,7 +1272,11 @@ export default function AdminApp() {
                       <td>{r.client?.full_name}</td>
                       <td>{r.status === 'paid' && walletTransactions.some(entry => entry.reference_type === 'receipt' && entry.reference_id === r.id && entry.status === 'completed') ? 'Paid from wallet' : r.status}</td>
                       <td className="amount-income">{formatMoney(r.total, r.currency || 'NGN')}</td>
-                      <td style={{ display: 'flex', gap: 6 }}><button className="btn btn-xs btn-secondary" onClick={() => setShowReceiptView(r)}><ReceiptText size={12} />Open</button>{r.status === 'unpaid' && hasPermission('finance') && walletAccounts.some(account => account.client_id === r.client_id && account.currency === (r.currency || 'NGN')) && <button className="btn btn-xs btn-primary" onClick={() => openWalletEntry(walletAccounts.find(account => account.client_id === r.client_id && account.currency === (r.currency || 'NGN')), r)}><Wallet size={12} />Wallet</button>}</td>
+                      <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button className="btn btn-xs btn-secondary" onClick={() => setShowReceiptView(r)}><ReceiptText size={12} />Open</button>
+                        {r.status === 'unpaid' && hasPermission('finance') && walletAccounts.some(account => account.client_id === r.client_id && account.currency === (r.currency || 'NGN')) && <button className="btn btn-xs btn-primary" onClick={() => openWalletEntry(walletAccounts.find(account => account.client_id === r.client_id && account.currency === (r.currency || 'NGN')), r)}><Wallet size={12} />Wallet</button>}
+                        {r.status === 'unpaid' && (hasPermission('receipts') || hasPermission('finance')) && <button className="btn btn-xs btn-danger" onClick={() => deleteReceipt(r)}><Trash2 size={12} />Delete</button>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1440,7 +1518,7 @@ export default function AdminApp() {
               </div>
             )}
             <div className="input-group">
-              <label className="input-label">Number of Packages</label>
+              <label className="input-label">{showEditGoods.type === 'sea' ? 'Number of Cartons / Packages with this measurement' : 'Number of Packages'}</label>
               <input className="input-field" type="number" min="1" value={showEditGoods.quantity || 1} onChange={e => setShowEditGoods(p => ({ ...p, quantity: e.target.value }))} />
             </div>
             <div className="input-group">
@@ -1533,6 +1611,9 @@ export default function AdminApp() {
             <button className="btn btn-primary btn-full" onClick={() => { const account = walletAccounts.find(item => item.client_id === showReceiptView.client_id && item.currency === (showReceiptView.currency || 'NGN')); setShowReceiptView(null); openWalletEntry(account, showReceiptView) }}><Wallet size={15} />Pay From Client Wallet</button>
           )}
         </div>
+        {showReceiptView?.status === 'unpaid' && (hasPermission('receipts') || hasPermission('finance')) && (
+          <button className="btn btn-danger btn-full" onClick={() => deleteReceipt(showReceiptView)} style={{ marginTop: 8 }}><Trash2 size={15} />Delete Mistaken Receipt</button>
+        )}
       </Modal>
 
       <Modal open={!!showReceiptEdit} title="Edit Receipt" onClose={() => setShowReceiptEdit(null)}>
@@ -1614,7 +1695,7 @@ export default function AdminApp() {
       </Modal>
 
       {/* Add Supplier */}
-      <Modal open={showAddSup} title="Add Supplier" onClose={() => setShowAddSup(false)}>
+      <Modal open={showAddSup} title="Add Supplier" onClose={() => { setShowAddSup(false); resetSupplierForm() }}>
         {[['name','Supplier Name','e.g. Yiwu Wholesale Market'],['contact','Contact Number','+86 xxx-xxxx-xxxx'],['category','Category','Electronics, Clothing…'],['address','Address','City, Province']].map(([k,l,p]) => (
           <div key={k} className="input-group">
             <label className="input-label">{l}</label>
@@ -1625,11 +1706,8 @@ export default function AdminApp() {
           <label className="input-label">Notes (optional)</label>
           <textarea className="input-field" rows={2} value={newSup.notes} onChange={e => setNewSup(p=>({...p,notes:e.target.value}))} />
         </div>
-        <button className="btn btn-primary btn-full" onClick={async () => {
-          if (!newSup.name) return
-          await supabase.from('suppliers').insert(newSup)
-          toast.success('Supplier added!'); setShowAddSup(false); setNewSup({ name:'',contact:'',category:'',address:'',notes:'' }); loadAll()
-        }} style={{ padding: 13 }}>Add Supplier</button>
+        <PhotoUploader photos={newSupplierPhotos.map(item => item.preview)} uploading={uploadingSupplierPhotos} onAdd={addSupplierPhotos} onRemove={removeSupplierPhoto} />
+        <button className="btn btn-primary btn-full" onClick={saveSupplier} disabled={uploadingSupplierPhotos} style={{ padding: 13 }}>{uploadingSupplierPhotos ? 'Saving Supplier...' : 'Add Supplier'}</button>
       </Modal>
 
       {/* Add Container */}

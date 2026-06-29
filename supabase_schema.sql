@@ -173,17 +173,17 @@ create table if not exists goods (
   client_id uuid not null references clients(id) on delete cascade,
   description text not null,
   type text not null check (type in ('sea', 'air')) default 'sea',
+  quantity integer not null default 1 check (quantity > 0),
   -- sea measurements
   length_cm numeric,
   width_cm numeric,
   height_cm numeric,
   cbm numeric generated always as (
     case when length_cm is not null and width_cm is not null and height_cm is not null
-    then round((length_cm * width_cm * height_cm / 1000000.0)::numeric, 4)
+    then round((length_cm * width_cm * height_cm * greatest(quantity, 1) / 1000000.0)::numeric, 4)
     else null end
   ) stored,
   -- common
-  quantity integer not null default 1 check (quantity > 0),
   weight_kg numeric not null default 0,
   tracking_no text,
   status text not null check (status in ('in_warehouse','in_transit','delivered')) default 'in_warehouse',
@@ -198,6 +198,15 @@ create table if not exists goods (
 alter table goods add column if not exists quantity integer not null default 1;
 alter table goods drop constraint if exists goods_quantity_positive;
 alter table goods add constraint goods_quantity_positive check (quantity > 0);
+
+-- CBM is the total cubic meter value for all identical cartons/packages in
+-- this goods record: length x width x height x quantity.
+alter table goods drop column if exists cbm;
+alter table goods add column cbm numeric generated always as (
+  case when length_cm is not null and width_cm is not null and height_cm is not null
+  then round((length_cm * width_cm * height_cm * greatest(quantity, 1) / 1000000.0)::numeric, 4)
+  else null end
+) stored;
 
 -- ── CONTAINERS ────────────────────────────────────────────
 create table if not exists containers (
@@ -284,9 +293,12 @@ create table if not exists suppliers (
   contact text,
   category text,
   address text,
+  photos text[] default array[]::text[],
   notes text,
   created_at timestamptz default now()
 );
+
+alter table suppliers add column if not exists photos text[] default array[]::text[];
 
 -- ── MESSAGES ──────────────────────────────────────────────
 create table if not exists messages (
@@ -349,12 +361,20 @@ create table if not exists wallet_transactions (
   description text,
   cash_reference text,
   office_location text,
+  payment_method text check (payment_method in ('cash_office', 'bank_transfer')),
+  payment_proof_url text,
   recorded_by uuid references profiles(id) on delete set null,
   approved_by uuid references profiles(id) on delete set null,
   approved_at timestamptz,
   balance_after numeric(14,2),
   created_at timestamptz default now()
 );
+
+alter table wallet_transactions add column if not exists payment_method text;
+alter table wallet_transactions add column if not exists payment_proof_url text;
+alter table wallet_transactions drop constraint if exists wallet_transactions_payment_method_check;
+alter table wallet_transactions add constraint wallet_transactions_payment_method_check
+  check (payment_method is null or payment_method in ('cash_office', 'bank_transfer'));
 
 -- Created and checked only by Supabase Edge Functions. The browser never
 -- receives a database session row or token hash.
@@ -513,6 +533,18 @@ drop policy if exists "receipts_update" on receipts;
 create policy "receipts_update" on receipts for update
   using (has_permission('receipts') or has_permission('finance'))
   with check (has_permission('receipts') or has_permission('finance'));
+drop policy if exists "receipts_delete" on receipts;
+create policy "receipts_delete" on receipts for delete
+  using (
+    (has_permission('receipts') or has_permission('finance'))
+    and status = 'unpaid'
+    and not exists (
+      select 1 from wallet_transactions
+      where reference_type = 'receipt'
+        and reference_id = receipts.id
+        and status = 'completed'
+    )
+  );
 
 -- EXPENSES: the finance permission can view and manage expense records.
 drop policy if exists "expenses_admin_all" on expenses;
@@ -688,11 +720,11 @@ begin
 
   insert into wallet_transactions (
     client_id, currency, entry_type, direction, amount, status,
-    description, cash_reference, office_location, recorded_by
+    description, cash_reference, office_location, payment_method, recorded_by
   ) values (
     p_client_id, v_currency, 'cash_topup', 'credit', v_amount, 'pending',
     nullif(trim(p_description), ''), nullif(trim(p_cash_reference), ''),
-    coalesce(nullif(trim(p_office_location), ''), 'Nigeria office'), auth.uid()
+    coalesce(nullif(trim(p_office_location), ''), 'Nigeria office'), 'cash_office', auth.uid()
   ) returning * into v_transaction;
 
   return v_transaction;
@@ -1000,6 +1032,8 @@ grant execute on function public.approve_wallet_cash_topup(uuid) to authenticate
 grant execute on function public.record_wallet_entry(uuid, text, numeric, text, text, uuid, text) to authenticated;
 grant execute on function public.pay_wallet_receipt(uuid, uuid, boolean) to authenticated;
 grant execute on function public.pay_wallet_purchase(uuid, uuid, boolean) to authenticated;
+grant execute on function public.pay_wallet_receipt(uuid, uuid, boolean) to service_role;
+grant execute on function public.pay_wallet_purchase(uuid, uuid, boolean) to service_role;
 
 notify pgrst, 'reload schema';
 
@@ -1049,3 +1083,28 @@ drop policy if exists "goods_photos_staff_update" on storage.objects;
 create policy "goods_photos_staff_update" on storage.objects for update
   using (bucket_id = 'goods-photos' and has_permission('goods'))
   with check (bucket_id = 'goods-photos' and has_permission('goods'));
+
+insert into storage.buckets (id, name, public)
+values ('supplier-photos', 'supplier-photos', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "supplier_photos_public_read" on storage.objects;
+create policy "supplier_photos_public_read" on storage.objects for select
+  using (bucket_id = 'supplier-photos');
+
+drop policy if exists "supplier_photos_admin_upload" on storage.objects;
+create policy "supplier_photos_admin_upload" on storage.objects for insert
+  with check (bucket_id = 'supplier-photos' and get_my_role() = 'admin');
+
+drop policy if exists "supplier_photos_admin_update" on storage.objects;
+create policy "supplier_photos_admin_update" on storage.objects for update
+  using (bucket_id = 'supplier-photos' and get_my_role() = 'admin')
+  with check (bucket_id = 'supplier-photos' and get_my_role() = 'admin');
+
+insert into storage.buckets (id, name, public)
+values ('topup-receipts', 'topup-receipts', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "topup_receipts_public_read" on storage.objects;
+create policy "topup_receipts_public_read" on storage.objects for select
+  using (bucket_id = 'topup-receipts');

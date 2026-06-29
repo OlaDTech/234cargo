@@ -6,8 +6,9 @@
 -- settings, warehouse addresses, database structure, RLS policies, and the
 -- goods-photos bucket.
 -- It deletes all test clients, shipments, receipts, wallet activity, and
--- operational records. Uploaded goods photos must be cleared separately from
--- Supabase Storage because direct SQL deletes from storage.objects are blocked.
+-- operational records. Uploaded goods photos, supplier photos, and top-up
+-- receipts must be cleared separately from Supabase Storage because direct SQL
+-- deletes from storage.objects are blocked.
 -- ============================================================
 
 begin;
@@ -58,10 +59,12 @@ where key in (
 )
 order by key;
 
--- Optional storage check: shows how much space old goods photos still occupy.
+-- Optional storage check: shows how much space old uploaded files still occupy.
 select
-  'goods-photos' as bucket_id,
+  bucket_id,
   count(*) as file_count,
   pg_size_pretty(coalesce(sum(nullif(metadata ->> 'size', '')::bigint), 0)) as total_size
 from storage.objects
-where bucket_id = 'goods-photos';
+where bucket_id in ('goods-photos', 'supplier-photos', 'topup-receipts')
+group by bucket_id
+order by bucket_id;

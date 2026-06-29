@@ -219,10 +219,12 @@ export function CBMCalculator({ value, onChange }) {
   const l = parseFloat(value.length_cm) || 0
   const w = parseFloat(value.width_cm) || 0
   const h = parseFloat(value.height_cm) || 0
-  const cbm = l && w && h ? (l * w * h / 1_000_000).toFixed(4) : null
+  const quantity = Math.max(1, parseInt(value.quantity, 10) || 1)
+  const singleCbm = l && w && h ? (l * w * h / 1_000_000) : null
+  const cbm = singleCbm ? (singleCbm * quantity).toFixed(4) : null
   return (
     <div style={{ marginBottom: 14 }}>
-      <label className="input-label">Measurements (cm) — CBM auto-calculated</label>
+      <label className="input-label">Carton Measurements (cm) - total CBM auto-calculated</label>
       <div className="measure-row" style={{ marginBottom: 8 }}>
         {[['length_cm','L'],['width_cm','W'],['height_cm','H']].map(([f, lbl]) => (
           <div key={f}>
@@ -235,8 +237,8 @@ export function CBMCalculator({ value, onChange }) {
       </div>
       {cbm && (
         <div className="cbm-result">
-          <div className="cbm-result-value">{cbm} m³</div>
-          <div className="cbm-result-label">= {l} × {w} × {h} ÷ 1,000,000</div>
+          <div className="cbm-result-value">{cbm} m3</div>
+          <div className="cbm-result-label">= {l} x {w} x {h} x {quantity} carton{quantity === 1 ? '' : 's'} / 1,000,000</div>
         </div>
       )}
     </div>

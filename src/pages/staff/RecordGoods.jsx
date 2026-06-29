@@ -230,7 +230,7 @@ export default function RecordGoods({ onDone }) {
             </div>
 
             <div className="input-group">
-              <label className="input-label">Number of Packages</label>
+              <label className="input-label">{goodsType === 'sea' ? 'Number of Cartons / Packages with this measurement' : 'Number of Packages'}</label>
               <input className="input-field" type="number" min="1" step="1" value={goodsType === 'sea' ? sea.quantity : air.quantity}
                 onChange={e => goodsType === 'sea' ? setSea(p => ({ ...p, quantity: e.target.value })) : setAir(p => ({ ...p, quantity: e.target.value }))} />
             </div>

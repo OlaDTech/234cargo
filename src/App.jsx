@@ -42,7 +42,6 @@ function Gate() {
           <div style={{ width: 188, height: 62, borderRadius: 14, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 16px', margin: '0 auto 14px', boxShadow: '0 18px 45px rgba(0,0,0,0.22)' }}>
             <img src="/234cargo-logo.svg" alt="234Cargo" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: 13 }}>Loading...</div>
         </div>
       </div>
     )
