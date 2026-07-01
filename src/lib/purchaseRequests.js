@@ -34,8 +34,21 @@ export function purchaseStatusMeta(status) {
 }
 
 export function marketplaceUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+
+  const explicitUrl = raw.match(/https?:\/\/[^\s"'<>]+/i)?.[0]
+  const protocolRelativeUrl = raw.match(/\/\/[^\s"'<>]+/i)?.[0]
+  const domainUrl = raw.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s"'<>]*)?/i)?.[0]
+  const candidate = explicitUrl || protocolRelativeUrl || domainUrl || raw
+  const cleaned = candidate
+    .trim()
+    .replace(/^\/\//, 'https://')
+    .replace(/[)\]},，。；;、]+$/g, '')
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`
+
   try {
-    const url = new URL(String(value || '').trim())
+    const url = new URL(withProtocol)
     return ['https:', 'http:'].includes(url.protocol) ? url.href : null
   } catch {
     return null

@@ -199,7 +199,7 @@ export default function ClientApp() {
   const submitPurchaseRequest = async () => {
     const productLink = marketplaceUrl(purchaseForm.product_link)
     if (!productLink) {
-      toast.error('Paste a complete product link that starts with https:// or http://')
+      toast.error('Paste a valid product link or copied 1688 share text')
       return
     }
     const optionItems = normalizePurchaseVariantItems(purchaseForm.variant_items, purchaseForm.variant, purchaseForm.quantity)
@@ -499,7 +499,7 @@ export default function ClientApp() {
               </div>
               <div className="input-group">
                 <label className="input-label">Product Link</label>
-                <input className="input-field" type="url" inputMode="url" placeholder="https://..." value={purchaseForm.product_link} onChange={event => setPurchaseForm(form => ({ ...form, product_link: event.target.value }))} />
+                <input className="input-field" type="text" inputMode="url" placeholder="Paste 1688 link or share text" value={purchaseForm.product_link} onChange={event => setPurchaseForm(form => ({ ...form, product_link: event.target.value }))} />
               </div>
               <div className="input-group">
                 <label className="input-label">Product Name <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>

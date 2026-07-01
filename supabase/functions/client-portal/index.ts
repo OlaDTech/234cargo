@@ -46,6 +46,28 @@ function text(value: unknown, maxLength: number) {
   return String(value || '').trim().slice(0, maxLength)
 }
 
+function marketplaceUrl(value: unknown) {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+
+  const explicitUrl = raw.match(/https?:\/\/[^\s"'<>]+/i)?.[0]
+  const protocolRelativeUrl = raw.match(/\/\/[^\s"'<>]+/i)?.[0]
+  const domainUrl = raw.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s"'<>]*)?/i)?.[0]
+  const candidate = explicitUrl || protocolRelativeUrl || domainUrl || raw
+  const cleaned = candidate
+    .trim()
+    .replace(/^\/\//, 'https://')
+    .replace(/[)\]},，。；;、]+$/g, '')
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`
+
+  try {
+    const parsed = new URL(withProtocol)
+    return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -95,12 +117,9 @@ Deno.serve(async req => {
 
     if (action === 'submit_purchase_request') {
       const platform = text(body.platform, 20).toLowerCase()
-      const productLink = text(body.product_link, 2000)
+      const productLink = marketplaceUrl(body.product_link)
       const quantity = Math.min(10000, Math.max(1, Number.parseInt(String(body.quantity || 1), 10) || 1))
-      try {
-        const parsed = new URL(productLink)
-        if (!['https:', 'http:'].includes(parsed.protocol) || !supportedPlatforms.has(platform)) throw new Error('invalid')
-      } catch {
+      if (!productLink || !supportedPlatforms.has(platform)) {
         return json({ error: 'Enter a valid marketplace link and platform.' }, 400)
       }
 
