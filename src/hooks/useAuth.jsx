@@ -3,6 +3,16 @@ import { supabase, getCurrentProfile } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 const CLIENT_SESSION_STORAGE_KEY = 'oa_client'
+const AUTH_BOOT_TIMEOUT_MS = 6000
+
+function withTimeout(promise, timeoutMs = AUTH_BOOT_TIMEOUT_MS) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Auth startup timed out')), timeoutMs)
+    }),
+  ])
+}
 
 function restoreClientSession() {
   try {
@@ -36,7 +46,7 @@ export function AuthProvider({ children }) {
 
   const loadStaffProfile = async (authUser) => {
     if (!authUser) return null
-    const p = await getCurrentProfile(authUser.id)
+    const p = await withTimeout(getCurrentProfile(authUser.id))
 
     if (!p) {
       await supabase.auth.signOut()
@@ -58,46 +68,61 @@ export function AuthProvider({ children }) {
   }
 
   const refreshStaffProfile = useCallback(async () => {
-    const authUser = user || (await supabase.auth.getUser()).data.user
+    const authUser = user || (await withTimeout(supabase.auth.getUser())).data.user
     if (!authUser) return null
-    const nextProfile = await getCurrentProfile(authUser.id)
+    const nextProfile = await withTimeout(getCurrentProfile(authUser.id))
     if (nextProfile) setProfile(nextProfile)
     return nextProfile
   }, [user])
 
   useEffect(() => {
-    // Restore client session from localStorage
+    let mounted = true
+
+    // Restore client session from localStorage immediately so a slow staff-auth check cannot trap the app on the splash screen.
     const savedClientSession = restoreClientSession()
     if (savedClientSession) {
       setClientUser(savedClientSession.client)
       setClientSessionToken(savedClientSession.sessionToken)
+      setLoading(false)
     }
 
-    // Check Supabase auth session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        try {
-          await loadStaffProfile(session.user)
-        } catch {
-          // Leave the user on the login screen if their auth account is incomplete.
+    const restoreStaffSession = async () => {
+      try {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession())
+        if (!mounted) return
+
+        if (session) {
+          try {
+            await loadStaffProfile(session.user)
+          } catch (error) {
+            console.warn(error.message || 'Unable to restore staff profile')
+          }
         }
+      } catch (error) {
+        console.warn(error.message || 'Unable to restore auth session')
+      } finally {
+        if (mounted) setLoading(false)
       }
-      setLoading(false)
-    })
+    }
+
+    restoreStaffSession()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         try {
           await loadStaffProfile(session.user)
-        } catch {
-          // The login handler shows the detailed error for interactive sign-ins.
+        } catch (error) {
+          console.warn(error.message || 'Unable to load staff profile')
         }
       } else {
         setUser(null)
         setProfile(null)
       }
     })
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
