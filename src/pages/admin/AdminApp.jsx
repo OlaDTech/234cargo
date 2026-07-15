@@ -1380,7 +1380,7 @@ export default function AdminApp() {
               <div style={{ marginTop: 20 }}>
                 <SectionHeader title="Label Preview" />
                 <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={settingsLabelType} onChange={setSettingsLabelType} />
-                <ShippingLabel client={clients[0]} settings={settingsForm} shipmentType={settingsLabelType} />
+                <ShippingLabel client={clients[0]} settings={settingsForm} shipmentType={settingsLabelType} maskClientPhone={false} />
               </div>
             )}
           </>
@@ -1508,7 +1508,7 @@ export default function AdminApp() {
 
       <Modal open={!!showClientLabel} title="Client Shipping Label" onClose={() => setShowClientLabel(null)}>
         <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
-        <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
+        <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} maskClientPhone={false} />
         <button className="btn btn-navy btn-full" onClick={() => window.print()} style={{ marginTop: 14 }}><Download size={16} />Download / Print Label</button>
       </Modal>
 

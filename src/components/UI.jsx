@@ -323,11 +323,26 @@ function warehouseForShipment(settings, shipmentType) {
   }
 }
 
-export function ShippingLabel({ client, settings = {}, shipmentType }) {
+function maskPhone(phone = '') {
+  const value = String(phone || '').trim()
+  if (value.length <= 4) return value || 'Phone not supplied'
+
+  const digits = value.replace(/\D/g, '')
+  if (digits.length >= 7) {
+    const visibleStart = digits.slice(0, 3)
+    const visibleEnd = digits.slice(-3)
+    return `${visibleStart}${'*'.repeat(Math.max(3, digits.length - 6))}${visibleEnd}`
+  }
+
+  return `${value.slice(0, 2)}${'*'.repeat(Math.max(3, value.length - 4))}${value.slice(-2)}`
+}
+
+export function ShippingLabel({ client, settings = {}, shipmentType, maskClientPhone = true }) {
   if (!client) return null
   const method = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'general'
   const payload = `234:${client.shipping_mark || ''}:${method}`
   const warehouse = warehouseForShipment(settings, shipmentType)
+  const displayPhone = maskClientPhone ? maskPhone(client.phone) : (client.phone || 'Phone not supplied')
   return (
     <div className="shipping-label">
       {/* Brand header bar */}
@@ -348,7 +363,7 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
             <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Consignee</div>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--t1)', marginTop: 2 }}>{client.full_name}</div>
             <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 1 }}>{client.state || client.country}</div>
-            <div style={{ fontSize: 12, color: 'var(--t2)' }}>{client.phone}</div>
+            <div style={{ fontSize: 12, color: 'var(--t2)' }}>{displayPhone}</div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ padding: 5, background: '#fff', border: '1px solid var(--line)', borderRadius: 8 }}>
@@ -362,6 +377,10 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
         <div className="shipping-label-mark">
           <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>Shipping Mark</div>
           <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 4, color: '#fff', fontFamily: 'Space Grotesk,sans-serif', marginTop: 3 }}>{client.shipping_mark}</div>
+        </div>
+        <div className="shipping-label-warning">
+          <strong>重要提醒</strong>
+          <span>请务必将此唛头标签贴在每一个包裹上。</span>
         </div>
         <div style={{ borderTop: '1px dashed var(--line2)', marginTop: 14, paddingTop: 12 }}>
           <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 4 }}>{warehouse.heading}</div>

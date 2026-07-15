@@ -138,7 +138,7 @@ export default function RecordGoods({ onDone }) {
         onResult={val => { goodsType === 'sea' ? setSea(p => ({...p, tracking_no: val})) : setAir(p => ({...p, tracking_no: val})) }}
         title="Scan Package Barcode (快递号)" />
       <Modal open={showLabel} title="Client Shipping Label" onClose={() => setShowLabel(false)}>
-        <ShippingLabel client={client} settings={settings} shipmentType={goodsType} />
+        <ShippingLabel client={client} settings={settings} shipmentType={goodsType} maskClientPhone={false} />
       </Modal>
 
       {/* Step 1 — Find Client */}
