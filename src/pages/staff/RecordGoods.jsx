@@ -141,7 +141,7 @@ export default function RecordGoods({ onDone }) {
         title="Scan Package Barcode (快递号)" />
       <Modal open={showLabel} title="Client Shipping Label" onClose={() => setShowLabel(false)}>
         <ShippingLabel client={client} settings={settings} shipmentType={goodsType} />
-        <button className="btn btn-navy btn-full" onClick={() => downloadShippingLabelPdf({ client, settings, shipmentType: goodsType })} style={{ marginTop: 12 }}><Download size={16} />Download 100 x 100 mm Label</button>
+        <button className="btn btn-navy btn-full" onClick={async () => { if (!(await downloadShippingLabelPdf({ client, settings, shipmentType: goodsType }))) toast.error('Could not download this label') }} style={{ marginTop: 12 }}><Download size={16} />Download 100 x 100 mm Label</button>
       </Modal>
 
       {/* Step 1 — Find Client */}

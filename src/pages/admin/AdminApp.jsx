@@ -1537,7 +1537,7 @@ export default function AdminApp() {
       <Modal open={!!showClientLabel} title="Client Shipping Label" onClose={() => setShowClientLabel(null)}>
         <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
         <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
-        <button className="btn btn-navy btn-full" onClick={() => downloadShippingLabelPdf({ client: showClientLabel, settings, shipmentType: adminLabelType })} style={{ marginTop: 14 }}><Download size={16} />Download 100 x 100 mm Label</button>
+        <button className="btn btn-navy btn-full" onClick={async () => { if (!(await downloadShippingLabelPdf({ client: showClientLabel, settings, shipmentType: adminLabelType }))) toast.error('Could not download this label') }} style={{ marginTop: 14 }}><Download size={16} />Download 100 x 100 mm Label</button>
       </Modal>
 
       <Modal open={showAddClient || !!showEditClient} title={showEditClient ? 'Edit Client' : 'Register Client'} onClose={() => { setShowAddClient(false); setShowEditClient(null) }}>
