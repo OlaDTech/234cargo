@@ -4,6 +4,7 @@ import { Flashlight, FlashlightOff } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Icons } from './Icons'
 import { generateQR } from '../lib/qr'
+import { maskPhone, shippingLabelPayload, warehouseForShipment } from '../lib/shippingLabel'
 
 // Re-export the icon set so pages can import from one place
 export { Icons } from './Icons'
@@ -307,40 +308,10 @@ export function PhotoGallery({ photos = [], compact = false }) {
   )
 }
 
-function warehouseForShipment(settings, shipmentType) {
-  const type = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'sea'
-  const legacy = {
-    name: settings.china_warehouse_name,
-    address: settings.china_warehouse_address,
-    phone: settings.china_warehouse_phone,
-  }
-
-  return {
-    name: settings[`china_${type}_warehouse_name`] || legacy.name,
-    address: settings[`china_${type}_warehouse_address`] || legacy.address,
-    phone: settings[`china_${type}_warehouse_phone`] || legacy.phone,
-    heading: type === 'air' ? 'Air Freight Receiving Address' : 'Sea Freight Receiving Address',
-  }
-}
-
-function maskPhone(phone = '') {
-  const value = String(phone || '').trim()
-  if (value.length <= 4) return value || 'Phone not supplied'
-
-  const digits = value.replace(/\D/g, '')
-  if (digits.length >= 7) {
-    const visibleStart = digits.slice(0, 3)
-    const visibleEnd = digits.slice(-3)
-    return `${visibleStart}${'*'.repeat(Math.max(3, digits.length - 6))}${visibleEnd}`
-  }
-
-  return `${value.slice(0, 2)}${'*'.repeat(Math.max(3, value.length - 4))}${value.slice(-2)}`
-}
-
 export function ShippingLabel({ client, settings = {}, shipmentType }) {
   if (!client) return null
   const method = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'general'
-  const payload = `234:${client.shipping_mark || ''}:${method}`
+  const payload = shippingLabelPayload(client, shipmentType)
   const warehouse = warehouseForShipment(settings, shipmentType)
   const displayPhone = maskPhone(client.phone)
   return (

@@ -3,6 +3,8 @@ import { supabase, uploadGoodsPhoto } from '../../lib/supabase'
 import { ScannerModal, CBMCalculator, PhotoUploader, Input, Select, Textarea, InputWithScan, TabRow, Modal, ShippingLabel } from '../../components/UI'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
+import { Download } from 'lucide-react'
+import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
 
 const EMPTY_SEA = { description: '', length_cm: '', width_cm: '', height_cm: '', quantity: '1', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
 const EMPTY_AIR = { description: '', quantity: '1', weight_kg: '', tracking_no: '', notes: '', status: 'in_warehouse' }
@@ -139,6 +141,7 @@ export default function RecordGoods({ onDone }) {
         title="Scan Package Barcode (快递号)" />
       <Modal open={showLabel} title="Client Shipping Label" onClose={() => setShowLabel(false)}>
         <ShippingLabel client={client} settings={settings} shipmentType={goodsType} />
+        <button className="btn btn-navy btn-full" onClick={() => downloadShippingLabelPdf({ client, settings, shipmentType: goodsType })} style={{ marginTop: 12 }}><Download size={16} />Download 100 x 100 mm Label</button>
       </Modal>
 
       {/* Step 1 — Find Client */}

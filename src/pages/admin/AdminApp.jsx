@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
+import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 import { marketplaceUrl, purchasePlatformLabel, purchaseStatusMeta, PURCHASE_STATUSES } from '../../lib/purchaseRequests'
 
@@ -24,10 +25,13 @@ const WAREHOUSE_SETTING_FIELDS = {
   ],
 }
 
+const RECEIPT_RATE_SETTING_KEYS = new Set(['sea_rate_cbm', 'sea_rate_kg', 'air_rate_kg'])
+
 function settingsWithSeparateWarehouses(settings = {}) {
   const valueFor = (key, legacyKey) => settings[key] || settings[legacyKey] || ''
+  const settingsWithoutReceiptRates = Object.fromEntries(Object.entries(settings).filter(([key]) => !RECEIPT_RATE_SETTING_KEYS.has(key)))
   return {
-    ...settings,
+    ...settingsWithoutReceiptRates,
     china_sea_warehouse_name: valueFor('china_sea_warehouse_name', 'china_warehouse_name'),
     china_sea_warehouse_address: valueFor('china_sea_warehouse_address', 'china_warehouse_address'),
     china_sea_warehouse_phone: valueFor('china_sea_warehouse_phone', 'china_warehouse_phone'),
@@ -35,6 +39,22 @@ function settingsWithSeparateWarehouses(settings = {}) {
     china_air_warehouse_address: valueFor('china_air_warehouse_address', 'china_warehouse_address'),
     china_air_warehouse_phone: valueFor('china_air_warehouse_phone', 'china_warehouse_phone'),
   }
+}
+
+const receiptItems = receipt => {
+  try { return typeof receipt?.items === 'string' ? JSON.parse(receipt.items || '[]') : (receipt?.items || []) }
+  catch { return [] }
+}
+
+const receiptCostBreakdown = receipt => {
+  const items = receiptItems(receipt)
+  const shippingItems = items.filter(item => item.kind === 'shipping')
+  const clearanceItems = items.filter(item => item.kind === 'clearance')
+  const amountFor = rows => rows.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unit_price) || 0), 0)
+  if (!shippingItems.length && !clearanceItems.length) {
+    return { shipping_cost: Number(receipt?.subtotal) || 0, clearance_cost: 0 }
+  }
+  return { shipping_cost: amountFor(shippingItems), clearance_cost: amountFor(clearanceItems) }
 }
 
 export default function AdminApp() {
@@ -86,8 +106,8 @@ export default function AdminApp() {
   const [uploadingSupplierPhotos, setUploadingSupplierPhotos] = useState(false)
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou → Port Klang', status: 'loading', departure_date: '', arrival_date: '' })
   const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
-  const [receiptForm, setReceiptForm] = useState({ discount: 0 })
-  const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
+  const [receiptForm, setReceiptForm] = useState({ shipping_cost: '', clearance_cost: '', discount: 0 })
+  const [receiptEditForm, setReceiptEditForm] = useState({ shipping_cost: '', clearance_cost: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
   const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
   const [purchaseEditForm, setPurchaseEditForm] = useState({ status: 'submitted', quoted_amount_rmb: '', team_notes: '', client_message: '' })
@@ -195,19 +215,26 @@ export default function AdminApp() {
   const generateReceipt = async () => {
     if (!showReceiptGen) return
     const g = goods.find(x => x.id === showReceiptGen.goods_id)
-    const ratesCbm = parseFloat(settings.sea_rate_cbm || 150000)
-    const ratesKg = g?.type === 'air' ? parseFloat(settings.air_rate_kg || 18000) : parseFloat(settings.sea_rate_kg || 1200)
-    const items = g?.type === 'sea'
-      ? [{ desc: 'Sea Freight (CBM)', qty: parseFloat(g.cbm) || 0, unit_price: ratesCbm }, { desc: 'Weight Surcharge', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
-      : [{ desc: 'Air Freight (kg)', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
+    const freightType = g?.type === 'air' ? 'air' : 'sea'
+    const freightLabel = freightType === 'air' ? 'Air Freight' : 'Sea Freight'
+    const shippingCost = Math.max(0, parseFloat(receiptForm.shipping_cost) || 0)
+    const clearanceCost = Math.max(0, parseFloat(receiptForm.clearance_cost) || 0)
+    if (shippingCost <= 0 && clearanceCost <= 0) {
+      toast.error('Enter a shipping cost or clearance cost')
+      return
+    }
+    const items = [
+      { kind: 'shipping', freight_type: freightType, desc: `${freightLabel} Shipping Cost`, qty: 1, unit_price: shippingCost },
+      { kind: 'clearance', freight_type: freightType, desc: `${freightLabel} Clearance Cost`, qty: 1, unit_price: clearanceCost },
+    ]
     const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0)
-    const discount = parseFloat(receiptForm.discount) || 0
-    const total = subtotal - discount
+    const discount = Math.max(0, parseFloat(receiptForm.discount) || 0)
+    const total = Math.max(0, subtotal - discount)
     const { data: recNo } = await supabase.rpc('generate_receipt_no')
     const { error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: showReceiptGen.goods_id, items: JSON.stringify(items), subtotal, discount, total, currency: 'NGN', issued_by: profile?.id })
     if (error) { toast.error(error.message); return }
     toast.success('Receipt ' + recNo + ' generated!')
-    setShowReceiptGen(null); setReceiptForm({ discount: 0 }); loadAll()
+    setShowReceiptGen(null); setReceiptForm({ shipping_cost: '', clearance_cost: '', discount: 0 }); loadAll()
   }
 
   const refreshData = async () => {
@@ -218,9 +245,11 @@ export default function AdminApp() {
   }
 
   const openReceiptEdit = receipt => {
+    const costs = receiptCostBreakdown(receipt)
     setShowReceiptEdit(receipt)
     setReceiptEditForm({
-      subtotal: String(receipt.subtotal ?? 0),
+      shipping_cost: String(costs.shipping_cost),
+      clearance_cost: String(costs.clearance_cost),
       discount: String(receipt.discount ?? 0),
       status: receipt.status || 'unpaid',
     })
@@ -228,11 +257,20 @@ export default function AdminApp() {
 
   const saveReceiptEdit = async () => {
     if (!showReceiptEdit) return
-    const subtotal = Math.max(0, parseFloat(receiptEditForm.subtotal) || 0)
+    const shippingCost = Math.max(0, parseFloat(receiptEditForm.shipping_cost) || 0)
+    const clearanceCost = Math.max(0, parseFloat(receiptEditForm.clearance_cost) || 0)
+    const freightType = showReceiptEdit.goods?.type === 'air' ? 'air' : 'sea'
+    const freightLabel = freightType === 'air' ? 'Air Freight' : 'Sea Freight'
+    const items = [
+      { kind: 'shipping', freight_type: freightType, desc: `${freightLabel} Shipping Cost`, qty: 1, unit_price: shippingCost },
+      { kind: 'clearance', freight_type: freightType, desc: `${freightLabel} Clearance Cost`, qty: 1, unit_price: clearanceCost },
+    ]
+    const subtotal = shippingCost + clearanceCost
     const discount = Math.max(0, parseFloat(receiptEditForm.discount) || 0)
     const status = receiptEditForm.status === 'paid' ? 'paid' : 'unpaid'
     const { error } = await supabase.from('receipts').update({
       subtotal,
+      items: JSON.stringify(items),
       discount,
       total: Math.max(0, subtotal - discount),
       status,
@@ -1028,7 +1066,7 @@ export default function AdminApp() {
                     <button onClick={() => setShowEditGoods(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
                     <button onClick={() => deleteGoodsRecord(g)} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
                     {!hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
-                      <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
+                      <button onClick={() => { setReceiptForm({ shipping_cost: '', clearance_cost: '', discount: 0 }); setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g }) }} className="btn btn-sm btn-secondary">Generate Receipt</button>
                     ) : hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
                       <button onClick={() => setShowReceiptView(hasReceipt)} className="btn btn-sm btn-ghost">View Receipt</button>
                     ) : null}
@@ -1363,16 +1401,6 @@ export default function AdminApp() {
               </div>
             </div>
 
-            <div className="card">
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>Rates</div>
-              {[['sea_rate_cbm','Sea Freight Rate (₦/CBM)'],['sea_rate_kg','Sea Surcharge (₦/kg)'],['air_rate_kg','Air Freight Rate (₦/kg)']].map(([k,l]) => (
-                <div key={k} className="input-group">
-                  <label className="input-label">{l}</label>
-                  <input className="input-field" type="number" step="0.01" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
-                </div>
-              ))}
-            </div>
-
             <button className="btn btn-primary btn-full" onClick={saveSettings} style={{ padding: 14, fontSize: 16 }}>Save All Settings</button>
 
             {/* Preview label */}
@@ -1509,7 +1537,7 @@ export default function AdminApp() {
       <Modal open={!!showClientLabel} title="Client Shipping Label" onClose={() => setShowClientLabel(null)}>
         <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
         <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
-        <button className="btn btn-navy btn-full" onClick={() => window.print()} style={{ marginTop: 14 }}><Download size={16} />Download / Print Label</button>
+        <button className="btn btn-navy btn-full" onClick={() => downloadShippingLabelPdf({ client: showClientLabel, settings, shipmentType: adminLabelType })} style={{ marginTop: 14 }}><Download size={16} />Download 100 x 100 mm Label</button>
       </Modal>
 
       <Modal open={showAddClient || !!showEditClient} title={showEditClient ? 'Edit Client' : 'Register Client'} onClose={() => { setShowAddClient(false); setShowEditClient(null) }}>
@@ -1636,15 +1664,23 @@ export default function AdminApp() {
               <div style={{ fontWeight: 600 }}>{clients.find(c=>c.id===showReceiptGen.client_id)?.full_name}</div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Goods</div>
               <div style={{ fontWeight: 600 }}>{showReceiptGen.goods?.description}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
-                {showReceiptGen.goods?.type === 'sea'
-                  ? `Rate: ₦${settings.sea_rate_cbm}/CBM + ₦${settings.sea_rate_kg}/kg`
-                  : `Rate: ₦${settings.air_rate_kg}/kg`}
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--teal-d)', fontWeight: 700, marginTop: 8 }}>{showReceiptGen.goods?.type === 'air' ? 'Air Freight' : 'Sea Freight'}</div>
             </div>
             <div className="input-group">
-              <label className="input-label">Discount (₦)</label>
+              <label className="input-label">{showReceiptGen.goods?.type === 'air' ? 'Air' : 'Sea'} Shipping Cost (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={receiptForm.shipping_cost} onChange={e => setReceiptForm(p=>({...p, shipping_cost: e.target.value}))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">{showReceiptGen.goods?.type === 'air' ? 'Air' : 'Sea'} Clearance Cost (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={receiptForm.clearance_cost} onChange={e => setReceiptForm(p=>({...p, clearance_cost: e.target.value}))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Discount (NGN)</label>
               <input className="input-field" type="number" min="0" step="0.01" placeholder="0.00" value={receiptForm.discount} onChange={e => setReceiptForm(p=>({...p, discount: e.target.value}))} />
+            </div>
+            <div className="receipt-total" style={{ marginBottom: 16 }}>
+              <span>Total Due</span>
+              <strong>{formatMoney(Math.max(0, (parseFloat(receiptForm.shipping_cost) || 0) + (parseFloat(receiptForm.clearance_cost) || 0) - (parseFloat(receiptForm.discount) || 0)), 'NGN')}</strong>
             </div>
             <button className="btn btn-primary btn-full" onClick={generateReceipt} style={{ padding: 13 }}>Generate & Issue Receipt</button>
           </>
@@ -1672,8 +1708,12 @@ export default function AdminApp() {
           <>
             <div className="banner banner-info" style={{ marginBottom: 14 }}>{showReceiptEdit.receipt_no}</div>
             <div className="input-group">
-              <label className="input-label">Subtotal (NGN)</label>
-              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.subtotal} onChange={event => setReceiptEditForm(form => ({ ...form, subtotal: event.target.value }))} />
+              <label className="input-label">Shipping Cost (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.shipping_cost} onChange={event => setReceiptEditForm(form => ({ ...form, shipping_cost: event.target.value }))} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Clearance Cost (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.clearance_cost} onChange={event => setReceiptEditForm(form => ({ ...form, clearance_cost: event.target.value }))} />
             </div>
             <div className="input-group">
               <label className="input-label">Discount (NGN)</label>
@@ -1688,7 +1728,7 @@ export default function AdminApp() {
             </div>
             <div className="receipt-total" style={{ marginBottom: 16 }}>
               <span>Updated Total</span>
-              <strong>{formatMoney(Math.max(0, (parseFloat(receiptEditForm.subtotal) || 0) - (parseFloat(receiptEditForm.discount) || 0)), 'NGN')}</strong>
+              <strong>{formatMoney(Math.max(0, (parseFloat(receiptEditForm.shipping_cost) || 0) + (parseFloat(receiptEditForm.clearance_cost) || 0) - (parseFloat(receiptEditForm.discount) || 0)), 'NGN')}</strong>
             </div>
             <button className="btn btn-primary btn-full" onClick={saveReceiptEdit}>Save Receipt Changes</button>
           </>

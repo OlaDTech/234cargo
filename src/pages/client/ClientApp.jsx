@@ -5,6 +5,7 @@ import { getClientPortal, getClientWallet, payClientPurchase, payClientReceipt, 
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
+import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
 import { EMPTY_PURCHASE_REQUEST, marketplaceUrl, normalizePurchaseVariantItems, purchaseStatusMeta, purchaseVariantNotes, purchaseVariantSummary, purchaseVariantTotal, PURCHASE_PLATFORMS } from '../../lib/purchaseRequests'
 
 const WALLET_ENTRY_LABELS = {
@@ -552,8 +553,8 @@ export default function ClientApp() {
             </div>
             <LabelMethodPicker />
             <ShippingLabel client={clientUser} settings={settings} shipmentType={labelShipmentType} />
-            <button onClick={() => window.print()} className="btn btn-navy btn-full" style={{ marginTop: 16, padding: 14 }}>
-              Print / Download Label
+            <button onClick={() => downloadShippingLabelPdf({ client: clientUser, settings, shipmentType: labelShipmentType })} className="btn btn-navy btn-full" style={{ marginTop: 16, padding: 14 }}>
+              <Download size={17} />Download 100 x 100 mm Label
             </button>
             <div className="banner banner-info" style={{ marginTop: 12 }}>
               Share your shipping mark <strong>{clientUser.shipping_mark}</strong> with your supplier. They must write or attach it clearly on all your packages.
@@ -666,7 +667,7 @@ export default function ClientApp() {
       <Modal open={showLabel} title="Shipping Label" onClose={() => setShowLabel(false)}>
         <LabelMethodPicker />
         <ShippingLabel client={clientUser} settings={settings} shipmentType={labelShipmentType} />
-        <button onClick={() => window.print()} className="btn btn-navy btn-full" style={{ marginTop: 12 }}>Print Label</button>
+        <button onClick={() => downloadShippingLabelPdf({ client: clientUser, settings, shipmentType: labelShipmentType })} className="btn btn-navy btn-full" style={{ marginTop: 12 }}><Download size={17} />Download 100 x 100 mm Label</button>
       </Modal>
     </div>
   )
