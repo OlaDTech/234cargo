@@ -314,51 +314,48 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
   const payload = shippingLabelPayload(client, shipmentType)
   const warehouse = warehouseForShipment(settings, shipmentType)
   const displayPhone = maskPhone(client.phone)
+  const methodLabel = method === 'air' ? 'Air Freight' : method === 'sea' ? 'Sea Freight' : 'Freight'
+
   return (
     <div className="shipping-label">
-      {/* Brand header bar */}
-      <div style={{ background: 'var(--teal)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-        <div style={{ width: 84, height: 30, borderRadius: 7, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 7px' }}>
-          <img src="/234cargo-logo.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+      <div className="shipping-label-top">
+        <div className="shipping-label-brand">
+          <img src="/234cargo-logo.svg" alt="234Cargo" />
+          <span>China to Nigeria Logistics</span>
         </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: '#fff', fontWeight: 900, fontSize: 14, fontFamily: 'Space Grotesk,sans-serif' }}>{settings.company_name || '234Cargo Logistics'}</div>
-            <div style={{ color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>FREIGHT FORWARDING</div>
-        </div>
-        <Icons.box size={18} color="rgba(255,255,255,0.85)" />
+        <div className={`shipping-label-method shipping-method-${method}`}>{methodLabel}</div>
       </div>
-      <div style={{ padding: 16 }}>
-        {method !== 'general' && <div className={`shipping-method-badge shipping-method-${method}`}>{method === 'air' ? 'AIR FREIGHT' : 'SEA FREIGHT'}</div>}
-        <div style={{ display: 'flex', gap: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: 0.7, fontWeight: 900 }}>Consignee</div>
-            <div style={{ fontWeight: 900, fontSize: 17, color: 'var(--ink)', marginTop: 3 }}>{client.full_name}</div>
-            <div style={{ fontSize: 13, color: 'var(--ink2)', fontWeight: 700, marginTop: 2 }}>{client.state || client.country}</div>
-            <div style={{ fontSize: 13, color: 'var(--ink2)', fontWeight: 800 }}>{displayPhone}</div>
+
+      <div className="shipping-label-body">
+        <div className="shipping-label-hero">
+          <div className="shipping-label-mark">
+            <span>Shipping Mark</span>
+            <strong>{client.shipping_mark}</strong>
+            <small>Write or paste this exact mark on every carton.</small>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ padding: 5, background: '#fff', border: '1px solid var(--line)', borderRadius: 8 }}>
-              <QRCode value={payload} size={84} fg="#0A1628" />
-            </div>
-            <div style={{ fontSize: 9, color: 'var(--ink)', marginTop: 4, letterSpacing: 0.4, fontWeight: 900 }}>SCAN TO TRACK</div>
-            <div style={{ fontSize: 9.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 900 }}>{client.shipping_mark}</div>
+          <div className="shipping-label-qr">
+            <div><QRCode value={payload} size={84} fg="#0A1628" /></div>
+            <span>Scan Label</span>
           </div>
         </div>
-        {shipmentType && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><TypePill type={shipmentType} /></div>}
-        <div className="shipping-label-mark">
-          <div style={{ fontSize: 10, color: '#5EEAD4', letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 900 }}>Shipping Mark</div>
-          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: 4, color: '#fff', fontFamily: 'Space Grotesk,sans-serif', marginTop: 3 }}>{client.shipping_mark}</div>
+
+        <div className="shipping-label-details">
+          <div className="shipping-label-panel">
+            <span className="shipping-label-kicker">Client</span>
+            <strong>{client.full_name}</strong>
+            <small>{client.state || client.country || 'Nigeria'} - {displayPhone}</small>
+          </div>
+          <div className="shipping-label-panel shipping-label-panel-destination">
+            <span className="shipping-label-kicker">{warehouse.heading}</span>
+            <strong>{warehouse.name || 'Receiving warehouse details pending'}</strong>
+            {warehouse.address && <small>{warehouse.address}</small>}
+            {warehouse.phone && <small className="shipping-label-phone"><Icons.phone size={13} />{warehouse.phone}</small>}
+          </div>
         </div>
+
         <div className="shipping-label-warning">
-          <strong>IMPORTANT / 重要提示</strong>
-          <p>This shipping mark must be attached clearly to every package. 234Cargo will not be liable for goods that are lost or cannot be identified because the shipping mark was not attached.</p>
-          <p lang="zh-CN">此唛头必须清晰粘贴在每一个包裹上。因未粘贴唛头而导致货物丢失或无法识别，234Cargo 概不负责。</p>
-        </div>
-        <div className="shipping-label-address">
-          <div className="shipping-label-address-heading">{warehouse.heading}</div>
-          <div className="shipping-label-address-name">{warehouse.name || 'Receiving warehouse details pending'}</div>
-          {warehouse.address && <div className="shipping-label-address-text">{warehouse.address}</div>}
-          {warehouse.phone && <div className="shipping-label-address-phone"><Icons.phone size={14} color="var(--teal-d)" />{warehouse.phone}</div>}
+          <strong>Important</strong>
+          <span>Goods without this shipping mark may be delayed, mixed up, or impossible to identify.</span>
         </div>
       </div>
     </div>

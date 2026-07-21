@@ -213,19 +213,32 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .divider-text { display: flex; align-items: center; gap: 10px; color: var(--t3); font-size: 12px; margin: 14px 0; }
 .divider-text::before, .divider-text::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
-.shipping-label { background: var(--white); border-radius: var(--radius-lg); border: 1px solid var(--line2); overflow: hidden; box-shadow: var(--shadow-sm); }
-.shipping-label-mark { background: var(--ink); color: #fff; border-radius: var(--radius-md); padding: 12px 14px; text-align: center; margin: 14px 0 0; }
-.shipping-label-warning { margin-top: 10px; padding: 12px; border: 2px solid var(--red); border-radius: var(--radius-md); background: #fff2e8; color: #7f1d1d; font-size: 13px; line-height: 1.42; }
-.shipping-label-warning strong { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 900; letter-spacing: .5px; color: var(--red); }
-.shipping-label-warning p { margin: 0; font-weight: 800; }
-.shipping-label-warning p + p { margin-top: 5px; padding-top: 5px; border-top: 1px solid #f4b7a6; font-weight: 900; }
-.shipping-label-address { margin-top: 13px; padding: 12px; border: 2px solid var(--teal); border-radius: var(--radius-md); background: #fff; color: var(--ink); }
-.shipping-label-address-heading { margin: -12px -12px 10px; padding: 7px 11px; background: var(--teal); color: #fff; font-size: 10px; font-weight: 900; letter-spacing: .8px; text-transform: uppercase; }
-.shipping-label-address-name { color: var(--ink); font-size: 13px; font-weight: 900; line-height: 1.3; }
-.shipping-label-address-text { margin-top: 7px; color: #000; font-size: 13px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
-.shipping-label-address-phone { display: flex; align-items: center; gap: 5px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #b9e5de; color: var(--teal-d); font-size: 13px; font-weight: 900; }
-.shipping-method-badge { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 900; letter-spacing: .8px; }
-.shipping-method-sea { background: var(--green); color: #fff; }.shipping-method-air { background: var(--blue); color: #fff; }
+.shipping-label { background: var(--white); border-radius: 12px; border: 1px solid #CBD5E1; overflow: hidden; box-shadow: 0 16px 40px rgba(10,22,40,.12); color: var(--ink); }
+.shipping-label-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; }
+.shipping-label-brand { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.shipping-label-brand img { width: 122px; height: 36px; object-fit: contain; display: block; }
+.shipping-label-brand span { color: var(--t2); font-size: 10px; font-weight: 900; letter-spacing: .7px; text-transform: uppercase; white-space: nowrap; }
+.shipping-label-method { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 7px 10px; border-radius: 7px; color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .75px; text-transform: uppercase; }
+.shipping-method-sea { background: #087A4D; }.shipping-method-air { background: #1D4ED8; }.shipping-method-general { background: var(--ink); }
+.shipping-label-body { padding: 14px; background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 38%); }
+.shipping-label-hero { display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 12px; align-items: stretch; }
+.shipping-label-mark { min-width: 0; display: flex; flex-direction: column; justify-content: center; border-radius: 10px; padding: 14px 16px; background: #081A33; color: #fff; border: 1px solid #0F2A4C; }
+.shipping-label-mark span { color: #5EEAD4; font-size: 10px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+.shipping-label-mark strong { display: block; margin-top: 6px; color: #fff; font: 900 30px 'Space Grotesk', sans-serif; letter-spacing: 3px; line-height: 1; overflow-wrap: anywhere; }
+.shipping-label-mark small { display: block; margin-top: 8px; color: #C8F5ED; font-size: 11px; font-weight: 800; line-height: 1.25; }
+.shipping-label-qr { display: grid; align-content: center; justify-items: center; gap: 6px; border-radius: 10px; background: #FFFFFF; border: 1px solid #CBD5E1; padding: 8px; }
+.shipping-label-qr > div { display: grid; place-items: center; padding: 5px; border-radius: 8px; background: #fff; }
+.shipping-label-qr span { color: var(--ink); font-size: 9.5px; font-weight: 900; letter-spacing: .7px; text-transform: uppercase; }
+.shipping-label-details { display: grid; grid-template-columns: 1fr; gap: 9px; margin-top: 11px; }
+.shipping-label-panel { min-width: 0; border: 1px solid #E2E8F0; border-radius: 9px; background: #fff; padding: 10px 11px; }
+.shipping-label-panel strong, .shipping-label-panel small { display: block; overflow-wrap: anywhere; }
+.shipping-label-panel strong { color: var(--ink); font-size: 13.5px; font-weight: 900; line-height: 1.25; }
+.shipping-label-panel small { margin-top: 4px; color: var(--t2); font-size: 12px; font-weight: 800; line-height: 1.35; }
+.shipping-label-kicker { display: block; margin-bottom: 4px; color: var(--teal-d); font-size: 9.5px; font-weight: 900; letter-spacing: .85px; text-transform: uppercase; }
+.shipping-label-phone { display: inline-flex !important; align-items: center; gap: 5px; color: var(--teal-d) !important; }
+.shipping-label-warning { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 10px; border: 1px solid #FCA5A5; border-left: 5px solid var(--red); border-radius: 9px; background: #FFF7F7; color: #7F1D1D; }
+.shipping-label-warning strong { flex-shrink: 0; color: var(--red); font-size: 11px; font-weight: 900; letter-spacing: .7px; text-transform: uppercase; }
+.shipping-label-warning span { color: #7F1D1D; font-size: 11.5px; font-weight: 800; line-height: 1.35; }
 
 .toast-success { background: var(--ink) !important; color: #fff !important; }
 
