@@ -34,6 +34,7 @@ class AppErrorBoundary extends Component {
 
 function Gate() {
   const { loading, activeRole } = useAuth()
+  const teamLoginRequested = ['#/admin-login', '#/staff-login'].includes(window.location.hash)
 
   if (loading) {
     return (
@@ -47,6 +48,7 @@ function Gate() {
     )
   }
 
+  if (teamLoginRequested && !['admin', 'staff', 'warehouse_manager'].includes(activeRole)) return <LoginPage />
   if (!activeRole) return <LoginPage />
   if (['admin', 'staff', 'warehouse_manager'].includes(activeRole)) return <AdminApp />
   if (activeRole === 'client') return <ClientApp />

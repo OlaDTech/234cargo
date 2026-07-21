@@ -142,6 +142,9 @@ export function AuthProvider({ children }) {
   }, [user?.id])
 
   const signInStaff = async (email, password) => {
+    setClientUser(null)
+    setClientSessionToken(null)
+    localStorage.removeItem(CLIENT_SESSION_STORAGE_KEY)
     setProfile(null)
     try {
       const { data, error } = await withTimeout(
