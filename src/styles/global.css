@@ -222,8 +222,8 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .shipping-label-address { margin-top: 13px; padding: 12px; border: 2px solid var(--teal); border-radius: var(--radius-md); background: #fff; color: var(--ink); }
 .shipping-label-address-heading { margin: -12px -12px 10px; padding: 7px 11px; background: var(--teal); color: #fff; font-size: 10px; font-weight: 900; letter-spacing: .8px; text-transform: uppercase; }
 .shipping-label-address-name { color: var(--ink); font-size: 13px; font-weight: 900; line-height: 1.3; }
-.shipping-label-address-text { margin-top: 5px; color: #000; font-size: 13px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
-.shipping-label-address-phone { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--teal-d); font-size: 13px; font-weight: 900; }
+.shipping-label-address-text { margin-top: 7px; color: #000; font-size: 13px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
+.shipping-label-address-phone { display: flex; align-items: center; gap: 5px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #b9e5de; color: var(--teal-d); font-size: 13px; font-weight: 900; }
 .shipping-method-badge { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 900; letter-spacing: .8px; }
 .shipping-method-sea { background: var(--green); color: #fff; }.shipping-method-air { background: var(--blue); color: #fff; }
 

@@ -88,7 +88,10 @@ export const buildShippingLabelSvg = ({ client, settings, shipmentType }) => {
     ? `<rect x="${qrX + columnIndex * moduleSize}" y="${qrY + rowIndex * moduleSize}" width="${moduleSize + 0.5}" height="${moduleSize + 0.5}" fill="#0A1628"/>`
     : '')).join('')
   const addressLines = wrapText(warehouse.address, 55, 3)
-  const addressText = addressLines.map((line, index) => `<tspan x="65" y="${848 + index * 24}">${escapeXml(line)}</tspan>`).join('')
+  const addressStartY = 842
+  const addressLineHeight = 22
+  const addressText = addressLines.map((line, index) => `<tspan x="65" y="${addressStartY + index * addressLineHeight}">${escapeXml(line)}</tspan>`).join('')
+  const warehousePhoneY = addressStartY + Math.max(0, addressLines.length - 1) * addressLineHeight + 28
   const freightFill = isAir ? '#2563EB' : '#059669'
 
   return `
@@ -133,12 +136,12 @@ export const buildShippingLabelSvg = ({ client, settings, shipmentType }) => {
       <text x="68" y="705" font-family="Arial, sans-serif" font-size="18" font-weight="900" fill="#7F1D1D">because the shipping mark was not attached.</text>
       <text x="68" y="729" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="17" font-weight="900" fill="#7F1D1D">此唛头必须贴在每个包裹上。未贴唛头导致货物丢失或无法识别，234Cargo 概不负责。</text>
 
-      <rect x="45" y="748" width="910" height="174" rx="14" fill="#FFFFFF" stroke="#0E9F8E" stroke-width="5"/>
+      <rect x="45" y="748" width="910" height="180" rx="14" fill="#FFFFFF" stroke="#0E9F8E" stroke-width="5"/>
       <rect x="45" y="748" width="910" height="46" rx="12" fill="#0E9F8E"/>
       <text x="65" y="779" font-family="Arial, sans-serif" font-size="18" font-weight="900" letter-spacing="2" fill="#FFFFFF">${escapeXml(warehouse.heading.toUpperCase())}</text>
-      <text x="65" y="824" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="900" fill="#000000">${escapeXml(warehouse.name || 'Receiving warehouse details pending')}</text>
+      <text x="65" y="816" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="25" font-weight="900" fill="#000000">${escapeXml(warehouse.name || 'Receiving warehouse details pending')}</text>
       <text font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="19" font-weight="900" fill="#000000">${addressText}</text>
-      ${warehouse.phone ? `<text x="65" y="911" font-family="Arial, sans-serif" font-size="22" font-weight="900" fill="#0B7D6F">Warehouse phone: ${escapeXml(warehouse.phone)}</text>` : ''}
+      ${warehouse.phone ? `<text x="65" y="${warehousePhoneY}" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="21" font-weight="900" fill="#0B7D6F">WAREHOUSE PHONE / 仓库电话: ${escapeXml(warehouse.phone)}</text>` : ''}
 
       <rect x="0" y="943" width="1000" height="57" fill="#0A1628"/>
       <text x="40" y="979" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="20" font-weight="900" fill="#FFFFFF">LABEL EVERY PACKAGE / 每个包裹必须贴唛头</text>
