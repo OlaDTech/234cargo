@@ -6,12 +6,13 @@ const CLIENT_SESSION_STORAGE_KEY = 'oa_client'
 const AUTH_BOOT_TIMEOUT_MS = 6000
 
 function withTimeout(promise, timeoutMs = AUTH_BOOT_TIMEOUT_MS) {
+  let timeoutId
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Auth startup timed out')), timeoutMs)
+      timeoutId = setTimeout(() => reject(new Error('Auth startup timed out')), timeoutMs)
     }),
-  ])
+  ]).finally(() => clearTimeout(timeoutId))
 }
 
 function restoreClientSession() {
@@ -77,6 +78,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true
+    let profileLoadTimer
 
     // Restore client session from localStorage immediately so a slow staff-auth check cannot trap the app on the splash screen.
     const savedClientSession = restoreClientSession()
@@ -86,41 +88,44 @@ export function AuthProvider({ children }) {
       setLoading(false)
     }
 
-    const restoreStaffSession = async () => {
-      try {
-        const { data: { session } } = await withTimeout(supabase.auth.getSession())
-        if (!mounted) return
-
-        if (session) {
-          try {
-            await loadStaffProfile(session.user)
-          } catch (error) {
-            console.warn(error.message || 'Unable to restore staff profile')
-          }
+    const loadInitialStaffSession = (session) => {
+      clearTimeout(profileLoadTimer)
+      profileLoadTimer = setTimeout(async () => {
+        try {
+          if (session?.user) await loadStaffProfile(session.user)
+        } catch (error) {
+          console.warn(error.message || 'Unable to restore staff profile')
+        } finally {
+          if (mounted) setLoading(false)
         }
-      } catch (error) {
-        console.warn(error.message || 'Unable to restore auth session')
-      } finally {
-        if (mounted) setLoading(false)
-      }
+      }, 0)
     }
 
-    restoreStaffSession()
+    // Keep this callback synchronous. Nested Supabase calls inside an auth callback can block the auth lock.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        loadInitialStaffSession(session)
+        return
+      }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        try {
-          await loadStaffProfile(session.user)
-        } catch (error) {
-          console.warn(error.message || 'Unable to load staff profile')
-        }
-      } else {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user) setUser(session.user)
+        return
+      }
+
+      if (event === 'USER_UPDATED' && session?.user) {
+        loadInitialStaffSession(session)
+        return
+      }
+
+      if (!session || event === 'SIGNED_OUT') {
         setUser(null)
         setProfile(null)
       }
     })
     return () => {
       mounted = false
+      clearTimeout(profileLoadTimer)
       subscription.unsubscribe()
     }
   }, [])
@@ -137,9 +142,20 @@ export function AuthProvider({ children }) {
   }, [user?.id])
 
   const signInStaff = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-    return loadStaffProfile(data.user)
+    setProfile(null)
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password }),
+        12000,
+      )
+      if (error) throw error
+      return await loadStaffProfile(data.user)
+    } catch (error) {
+      if (/timed out|failed to fetch|network/i.test(error?.message || '')) {
+        throw new Error('Could not reach the secure login service. Check your connection and try again.')
+      }
+      throw error
+    }
   }
 
   const signInClient = (clientSession) => {

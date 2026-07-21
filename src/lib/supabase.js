@@ -40,8 +40,8 @@ export async function getCurrentProfile(userId) {
     .from('profiles')
     .select('*')
     .eq('id', id)
-    .single()
-  if (error) return null
+    .maybeSingle()
+  if (error) throw error
   return data
 }
 

@@ -6,7 +6,8 @@ import { Icons } from '../components/Icons'
 
 export default function LoginPage() {
   const { signInStaff, signInClient } = useAuth()
-  const initialRole = window.location.hash === '#/admin-login' ? 'admin' : window.location.hash === '#/staff-login' ? 'staff' : window.location.hash === '#/client-login' ? 'client' : null
+  const loginRoute = window.location.hash.replace(/^#/, '') || window.location.pathname
+  const initialRole = loginRoute === '/admin-login' ? 'admin' : loginRoute === '/staff-login' ? 'staff' : loginRoute === '/client-login' ? 'client' : null
   const [view, setView] = useState(initialRole ? 'login' : 'home')
   const [mode, setMode] = useState(initialRole === 'admin' || initialRole === 'staff' ? 'staff' : 'client')
   const [loginRole, setLoginRole] = useState(initialRole || 'client')
@@ -149,7 +150,7 @@ export default function LoginPage() {
   return (
     <div className="login-bg">
       <div className="login-shell">
-        <button className="login-back" onClick={() => { window.history.replaceState(null, '', window.location.pathname); setView('home'); setError('') }}>Back to homepage</button>
+        <button className="login-back" onClick={() => { window.history.replaceState(null, '', '/'); setView('home'); setError('') }}>Back to homepage</button>
         <div className="login-intro"><img className="login-wordmark" src="/234cargo-logo.svg" alt="234Cargo" /><div className="login-subtitle">{heading}</div></div>
         <div className="login-card">
           <div className="login-card-kicker">{mode === 'client' ? 'Shipment access' : 'Team workspace'}</div>
