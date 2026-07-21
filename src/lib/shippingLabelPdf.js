@@ -87,10 +87,9 @@ export const buildShippingLabelSvg = ({ client, settings, shipmentType }) => {
   const qrRects = matrix.flatMap((row, rowIndex) => row.map((dark, columnIndex) => dark
     ? `<rect x="${qrX + columnIndex * moduleSize}" y="${qrY + rowIndex * moduleSize}" width="${moduleSize + 0.5}" height="${moduleSize + 0.5}" fill="#0A1628"/>`
     : '')).join('')
-  const addressLines = wrapText(warehouse.address, 54, 3)
-  const addressText = addressLines.map((line, index) => `<tspan x="55" y="${812 + index * 32}">${escapeXml(line)}</tspan>`).join('')
-  const freightFill = isAir ? '#EAF0FE' : '#E6F7F4'
-  const freightText = isAir ? '#2563EB' : '#0B7D6F'
+  const addressLines = wrapText(warehouse.address, 55, 3)
+  const addressText = addressLines.map((line, index) => `<tspan x="65" y="${848 + index * 24}">${escapeXml(line)}</tspan>`).join('')
+  const freightFill = isAir ? '#2563EB' : '#059669'
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 1000 1000">
@@ -112,32 +111,37 @@ export const buildShippingLabelSvg = ({ client, settings, shipmentType }) => {
       <text x="955" y="99" text-anchor="end" font-family="Arial, sans-serif" font-size="18" font-weight="600" fill="#DDF7F2">${escapeXml(companyName)}</text>
 
       <rect x="45" y="170" width="210" height="48" rx="24" fill="${freightFill}"/>
-      <text x="150" y="202" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="${freightText}">${method}</text>
+      <text x="150" y="202" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="900" fill="#FFFFFF">${method}</text>
 
-      <text x="50" y="255" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="#94A3B8">CONSIGNEE</text>
-      <text x="50" y="307" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="#0D1A2E">${escapeXml(client.full_name || 'Client')}</text>
-      <text x="50" y="349" font-family="Arial, sans-serif" font-size="25" fill="#475569">${escapeXml(client.state || client.country || '')}</text>
-      <text x="50" y="389" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#475569">${escapeXml(maskPhone(client.phone))}</text>
+      <text x="50" y="255" font-family="Arial, sans-serif" font-size="18" font-weight="900" letter-spacing="2" fill="#0A1628">CONSIGNEE</text>
+      <text x="50" y="307" font-family="Arial, sans-serif" font-size="40" font-weight="900" fill="#000000">${escapeXml(client.full_name || 'Client')}</text>
+      <text x="50" y="349" font-family="Arial, sans-serif" font-size="26" font-weight="800" fill="#13243F">${escapeXml(client.state || client.country || '')}</text>
+      <text x="50" y="389" font-family="Arial, sans-serif" font-size="26" font-weight="900" fill="#13243F">${escapeXml(maskPhone(client.phone))}</text>
 
       <rect x="685" y="195" width="280" height="305" rx="18" fill="#FFFFFF" stroke="#D0D9E6" stroke-width="4"/>
       ${qrRects}
-      <text x="825" y="478" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" font-weight="800" letter-spacing="1" fill="#0B7D6F">SCAN SHIPPING MARK</text>
+      <text x="825" y="478" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" font-weight="900" letter-spacing="1" fill="#0A1628">SCAN SHIPPING MARK</text>
 
       <rect x="45" y="430" width="605" height="142" rx="16" fill="#0A1628"/>
-      <text x="75" y="472" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="3" fill="#94A3B8">SHIPPING MARK</text>
-      <text x="75" y="535" font-family="Arial, sans-serif" font-size="48" font-weight="800" letter-spacing="3" fill="#FFFFFF">${escapeXml(mark)}</text>
+      <text x="75" y="472" font-family="Arial, sans-serif" font-size="19" font-weight="900" letter-spacing="3" fill="#5EEAD4">SHIPPING MARK</text>
+      <text x="75" y="535" font-family="Arial, sans-serif" font-size="50" font-weight="900" letter-spacing="3" fill="#FFFFFF">${escapeXml(mark)}</text>
 
-      <rect x="45" y="598" width="910" height="64" rx="12" fill="#FEF6E7" stroke="#D97706" stroke-width="2"/>
-      <text x="70" y="639" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="22" font-weight="700" fill="#92400E">IMPORTANT / 重要提醒: 请将此唛头标签贴在每一个包裹上。</text>
+      <rect x="45" y="582" width="910" height="154" rx="12" fill="#FFF2E8" stroke="#DC2626" stroke-width="4"/>
+      <text x="68" y="614" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="22" font-weight="900" fill="#DC2626">IMPORTANT / 重要提示</text>
+      <text x="68" y="647" font-family="Arial, sans-serif" font-size="20" font-weight="900" fill="#7F1D1D">This shipping mark must be attached clearly to every package.</text>
+      <text x="68" y="678" font-family="Arial, sans-serif" font-size="18" font-weight="900" fill="#7F1D1D">234Cargo will not be liable for goods lost or unidentified</text>
+      <text x="68" y="705" font-family="Arial, sans-serif" font-size="18" font-weight="900" fill="#7F1D1D">because the shipping mark was not attached.</text>
+      <text x="68" y="729" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="17" font-weight="900" fill="#7F1D1D">此唛头必须贴在每个包裹上。未贴唛头导致货物丢失或无法识别，234Cargo 概不负责。</text>
 
-      <rect x="45" y="690" width="910" height="222" rx="16" fill="#E6F7F4" stroke="#B9E5DE" stroke-width="3"/>
-      <text x="55" y="733" font-family="Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="2" fill="#0B7D6F">${escapeXml(warehouse.heading.toUpperCase())}</text>
-      <text x="55" y="772" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="25" font-weight="800" fill="#0D1A2E">${escapeXml(warehouse.name || 'Receiving warehouse details pending')}</text>
-      <text font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="23" fill="#475569">${addressText}</text>
-      ${warehouse.phone ? `<text x="55" y="891" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#0B7D6F">Warehouse phone: ${escapeXml(warehouse.phone)}</text>` : ''}
+      <rect x="45" y="748" width="910" height="174" rx="14" fill="#FFFFFF" stroke="#0E9F8E" stroke-width="5"/>
+      <rect x="45" y="748" width="910" height="46" rx="12" fill="#0E9F8E"/>
+      <text x="65" y="779" font-family="Arial, sans-serif" font-size="18" font-weight="900" letter-spacing="2" fill="#FFFFFF">${escapeXml(warehouse.heading.toUpperCase())}</text>
+      <text x="65" y="824" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="900" fill="#000000">${escapeXml(warehouse.name || 'Receiving warehouse details pending')}</text>
+      <text font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="19" font-weight="900" fill="#000000">${addressText}</text>
+      ${warehouse.phone ? `<text x="65" y="911" font-family="Arial, sans-serif" font-size="22" font-weight="900" fill="#0B7D6F">Warehouse phone: ${escapeXml(warehouse.phone)}</text>` : ''}
 
       <rect x="0" y="943" width="1000" height="57" fill="#0A1628"/>
-      <text x="40" y="979" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="20" font-weight="700" fill="#FFFFFF">Attach clearly to every package / 每件货物都要贴标签</text>
+      <text x="40" y="979" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="20" font-weight="900" fill="#FFFFFF">LABEL EVERY PACKAGE / 每个包裹必须贴唛头</text>
       <text x="960" y="979" text-anchor="end" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#5EEAD4">100 x 100 mm</text>
     </svg>`
 }

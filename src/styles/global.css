@@ -215,11 +215,17 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 
 .shipping-label { background: var(--white); border-radius: var(--radius-lg); border: 1px solid var(--line2); overflow: hidden; box-shadow: var(--shadow-sm); }
 .shipping-label-mark { background: var(--ink); color: #fff; border-radius: var(--radius-md); padding: 12px 14px; text-align: center; margin: 14px 0 0; }
-.shipping-label-warning { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--amber); border-radius: var(--radius-md); background: var(--amber-bg); color: #92400E; font-size: 11.5px; line-height: 1.35; }
-.shipping-label-warning strong { flex-shrink: 0; font-weight: 900; color: var(--amber); }
-.shipping-label-warning span { font-weight: 700; }
+.shipping-label-warning { margin-top: 10px; padding: 12px; border: 2px solid var(--red); border-radius: var(--radius-md); background: #fff2e8; color: #7f1d1d; font-size: 13px; line-height: 1.42; }
+.shipping-label-warning strong { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 900; letter-spacing: .5px; color: var(--red); }
+.shipping-label-warning p { margin: 0; font-weight: 800; }
+.shipping-label-warning p + p { margin-top: 5px; padding-top: 5px; border-top: 1px solid #f4b7a6; font-weight: 900; }
+.shipping-label-address { margin-top: 13px; padding: 12px; border: 2px solid var(--teal); border-radius: var(--radius-md); background: #fff; color: var(--ink); }
+.shipping-label-address-heading { margin: -12px -12px 10px; padding: 7px 11px; background: var(--teal); color: #fff; font-size: 10px; font-weight: 900; letter-spacing: .8px; text-transform: uppercase; }
+.shipping-label-address-name { color: var(--ink); font-size: 13px; font-weight: 900; line-height: 1.3; }
+.shipping-label-address-text { margin-top: 5px; color: #000; font-size: 13px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
+.shipping-label-address-phone { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--teal-d); font-size: 13px; font-weight: 900; }
 .shipping-method-badge { display: inline-flex; margin-bottom: 12px; padding: 5px 9px; border-radius: 6px; font-size: 11px; font-weight: 900; letter-spacing: .8px; }
-.shipping-method-sea { background: var(--blue-bg); color: var(--blue); }.shipping-method-air { background: var(--violet-bg); color: var(--violet); }
+.shipping-method-sea { background: var(--green); color: #fff; }.shipping-method-air { background: var(--blue); color: #fff; }
 
 .toast-success { background: var(--ink) !important; color: #fff !important; }
 
