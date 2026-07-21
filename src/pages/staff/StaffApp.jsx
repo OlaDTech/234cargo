@@ -382,7 +382,7 @@ export default function StaffApp() {
       <Modal open={!!selectedClient} title="Client Details" onClose={() => setSelectedClient(null)}>
         {selectedClient && (
           <>
-            <ShippingLabel client={selectedClient} settings={settings} maskClientPhone={false} />
+            <ShippingLabel client={selectedClient} settings={settings} />
             <div style={{ marginTop: 16 }}>
               <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Goods History</div>
               {goods.filter(g => g.client_id === selectedClient.id).map(g => (

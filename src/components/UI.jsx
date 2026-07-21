@@ -337,12 +337,12 @@ function maskPhone(phone = '') {
   return `${value.slice(0, 2)}${'*'.repeat(Math.max(3, value.length - 4))}${value.slice(-2)}`
 }
 
-export function ShippingLabel({ client, settings = {}, shipmentType, maskClientPhone = true }) {
+export function ShippingLabel({ client, settings = {}, shipmentType }) {
   if (!client) return null
   const method = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'general'
   const payload = `234:${client.shipping_mark || ''}:${method}`
   const warehouse = warehouseForShipment(settings, shipmentType)
-  const displayPhone = maskClientPhone ? maskPhone(client.phone) : (client.phone || 'Phone not supplied')
+  const displayPhone = maskPhone(client.phone)
   return (
     <div className="shipping-label">
       {/* Brand header bar */}
