@@ -234,6 +234,7 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .shipping-label-panel strong, .shipping-label-panel small { display: block; overflow-wrap: anywhere; }
 .shipping-label-panel strong { color: var(--ink); font-size: 13.5px; font-weight: 900; line-height: 1.25; }
 .shipping-label-panel small { margin-top: 4px; color: var(--t2); font-size: 12px; font-weight: 800; line-height: 1.35; }
+.shipping-label-panel-destination small:not(.shipping-label-phone) { color: var(--ink); font-weight: 900; }
 .shipping-label-kicker { display: block; margin-bottom: 4px; color: var(--teal-d); font-size: 9.5px; font-weight: 900; letter-spacing: .85px; text-transform: uppercase; }
 .shipping-label-phone { display: inline-flex !important; align-items: center; gap: 5px; color: var(--teal-d) !important; }
 .shipping-label-warning { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 10px; border: 1px solid #FCA5A5; border-left: 5px solid var(--red); border-radius: 9px; background: #FFF7F7; color: #7F1D1D; }

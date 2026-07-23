@@ -98,9 +98,17 @@ export const buildShippingLabelSvg = ({ client, settings, shipmentType }) => {
     ? `<rect x="${qrX + columnIndex * moduleSize}" y="${qrY + rowIndex * moduleSize}" width="${moduleSize + 0.45}" height="${moduleSize + 0.45}" fill="#081A33"/>`
     : '')).join('')
   const markSize = fitFontSize(mark, 82, 42, 15)
-  const clientNameSize = fitFontSize(clientName, 34, 23, 25)
-  const addressLines = wrapText(warehouse.address || 'Receiving warehouse details pending', 46, 3)
-  const addressText = addressLines.map((line, index) => `<tspan x="536" y="${603 + index * 28}">${escapeXml(line)}</tspan>`).join('')
+  const clientNameSize = fitFontSize(clientName, 34, 24, 25)
+  const clientMeta = `${clientLocation} - ${displayPhone}`
+  const clientMetaSize = fitFontSize(clientMeta, 20, 16, 44)
+  const warehouseName = warehouse.name || 'Receiving warehouse'
+  const warehouseNameSize = fitFontSize(warehouseName, 28, 22, 40)
+  const addressLines = wrapText(warehouse.address || 'Receiving warehouse details pending', 66, 3)
+  const addressFontSize = addressLines.length > 2 ? 24 : 27
+  const addressLineHeight = addressLines.length > 2 ? 28 : 31
+  const addressStartY = 742
+  const addressText = addressLines.map((line, index) => `<tspan x="96" y="${addressStartY + index * addressLineHeight}">${escapeXml(line)}</tspan>`).join('')
+  const phoneY = Math.min(824, addressStartY + addressLines.length * addressLineHeight + 24)
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 1000 1000">
@@ -133,29 +141,28 @@ export const buildShippingLabelSvg = ({ client, settings, shipmentType }) => {
       ${qrRects}
       <text x="820" y="480" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="900" letter-spacing="1.2" fill="#081A33">SCAN LABEL</text>
 
-      <rect x="60" y="494" width="410" height="180" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="3"/>
-      <text x="88" y="542" font-family="Arial, sans-serif" font-size="16" font-weight="900" letter-spacing="2.4" fill="#087A4D">CLIENT</text>
-      <text x="88" y="591" font-family="Arial, sans-serif" font-size="${clientNameSize}" font-weight="900" fill="#081A33">${escapeXml(clientName)}</text>
-      <text x="88" y="633" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#334155">${escapeXml(clientLocation)}</text>
-      <text x="88" y="663" font-family="Arial, sans-serif" font-size="19" font-weight="800" fill="#087A4D">${escapeXml(displayPhone)}</text>
+      <rect x="60" y="492" width="880" height="108" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="3"/>
+      <text x="96" y="528" font-family="Arial, sans-serif" font-size="16" font-weight="900" letter-spacing="2.4" fill="#087A4D">CLIENT</text>
+      <text x="96" y="570" font-family="Arial, sans-serif" font-size="${clientNameSize}" font-weight="900" fill="#081A33">${escapeXml(clientName)}</text>
+      <text x="96" y="594" font-family="Arial, sans-serif" font-size="${clientMetaSize}" font-weight="900" fill="#334155">${escapeXml(clientMeta)}</text>
 
-      <rect x="500" y="494" width="440" height="180" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="3"/>
-      <text x="536" y="542" font-family="Arial, sans-serif" font-size="16" font-weight="900" letter-spacing="2.4" fill="#087A4D">${escapeXml(warehouse.heading.toUpperCase())}</text>
-      <text x="536" y="579" font-family="Arial, sans-serif" font-size="24" font-weight="900" fill="#081A33">${escapeXml(warehouse.name || 'Receiving warehouse')}</text>
-      <text font-family="Arial, sans-serif" font-size="19" font-weight="800" fill="#334155">${addressText}</text>
-      ${warehouse.phone ? `<text x="536" y="661" font-family="Arial, sans-serif" font-size="18" font-weight="900" fill="${methodFill}">${escapeXml(warehouse.phone)}</text>` : ''}
+      <rect x="60" y="628" width="880" height="210" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="3"/>
+      <rect x="60" y="628" width="12" height="210" rx="6" fill="${methodFill}"/>
+      <text x="96" y="668" font-family="Arial, sans-serif" font-size="16" font-weight="900" letter-spacing="2.4" fill="#087A4D">${escapeXml(warehouse.heading.toUpperCase())}</text>
+      <text x="96" y="709" font-family="Arial, sans-serif" font-size="${warehouseNameSize}" font-weight="900" fill="#081A33">${escapeXml(warehouseName)}</text>
+      <text font-family="Arial, sans-serif" font-size="${addressFontSize}" font-weight="900" fill="#081A33">${addressText}</text>
+      ${warehouse.phone ? `<text x="96" y="${phoneY}" font-family="Arial, sans-serif" font-size="21" font-weight="900" fill="${methodFill}">${escapeXml(warehouse.phone)}</text>` : ''}
 
-      <rect x="60" y="708" width="880" height="122" rx="18" fill="#FFF7F7" stroke="#FCA5A5" stroke-width="3"/>
-      <rect x="60" y="708" width="12" height="122" rx="6" fill="#DC2626"/>
-      <circle cx="111" cy="769" r="28" fill="#DC2626"/>
-      <text x="111" y="780" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" font-weight="900" fill="#FFFFFF">!</text>
-      <text x="158" y="754" font-family="Arial, sans-serif" font-size="24" font-weight="900" letter-spacing="1" fill="#B91C1C">IMPORTANT</text>
-      <text x="158" y="789" font-family="Arial, sans-serif" font-size="20" font-weight="800" fill="#7F1D1D">Attach this label clearly to each package before sending to the warehouse.</text>
-      <text x="158" y="818" font-family="Arial, sans-serif" font-size="18" font-weight="800" fill="#7F1D1D">Unmarked goods can be mixed up, delayed, or impossible to identify.</text>
+      <rect x="60" y="856" width="880" height="74" rx="18" fill="#FFF7F7" stroke="#FCA5A5" stroke-width="3"/>
+      <rect x="60" y="856" width="12" height="74" rx="6" fill="#DC2626"/>
+      <circle cx="106" cy="893" r="23" fill="#DC2626"/>
+      <text x="106" y="902" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#FFFFFF">!</text>
+      <text x="150" y="885" font-family="Arial, sans-serif" font-size="20" font-weight="900" letter-spacing="1" fill="#B91C1C">IMPORTANT</text>
+      <text x="150" y="914" font-family="Arial, sans-serif" font-size="18" font-weight="800" fill="#7F1D1D">Attach this label clearly to every package. Unmarked goods may be delayed.</text>
 
-      <rect x="60" y="860" width="880" height="80" rx="18" fill="#081A33"/>
-      <text x="92" y="909" font-family="Arial, sans-serif" font-size="20" font-weight="900" letter-spacing="1.6" fill="#FFFFFF">234CARGO SHIPPING LABEL</text>
-      <text x="908" y="909" text-anchor="end" font-family="Arial, sans-serif" font-size="18" font-weight="900" letter-spacing="1.3" fill="#5EEAD4">100 x 100 mm</text>
+      <rect x="60" y="946" width="880" height="28" rx="9" fill="#081A33"/>
+      <text x="92" y="966" font-family="Arial, sans-serif" font-size="14" font-weight="900" letter-spacing="1.3" fill="#FFFFFF">234CARGO SHIPPING LABEL</text>
+      <text x="908" y="966" text-anchor="end" font-family="Arial, sans-serif" font-size="14" font-weight="900" letter-spacing="1.1" fill="#5EEAD4">100 x 100 mm</text>
     </svg>`
 }
 
