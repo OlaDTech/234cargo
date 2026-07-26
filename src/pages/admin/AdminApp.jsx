@@ -57,6 +57,29 @@ const receiptCostBreakdown = receipt => {
   return { shipping_cost: amountFor(shippingItems), clearance_cost: amountFor(clearanceItems) }
 }
 
+const isAirBatch = load => load?.type === 'air'
+const loadKindLabel = load => isAirBatch(load) ? 'Air batch' : 'Sea container'
+const loadAssignmentLabel = goodsRecord => goodsRecord?.type === 'air' ? 'air batch' : 'container'
+const goodsQuantity = goodsRecord => Math.max(1, parseInt(goodsRecord?.quantity, 10) || 1)
+const goodsMeasurementParts = goodsRecord => {
+  if (!goodsRecord) return []
+  const parts = [`Qty ${goodsQuantity(goodsRecord)}`]
+  if (goodsRecord.type === 'sea') {
+    if (goodsRecord.length_cm && goodsRecord.width_cm && goodsRecord.height_cm) {
+      parts.push(`${goodsRecord.length_cm} x ${goodsRecord.width_cm} x ${goodsRecord.height_cm} cm`)
+    }
+    if (goodsRecord.cbm) parts.push(`${goodsRecord.cbm} CBM`)
+  }
+  if (goodsRecord.weight_kg !== null && goodsRecord.weight_kg !== undefined && goodsRecord.weight_kg !== '') {
+    parts.push(`${goodsRecord.weight_kg} kg`)
+  }
+  return parts
+}
+const compatibleLoadsForGoods = (loads, goodsRecord) => loads.filter(load => {
+  const compatible = goodsRecord?.type === 'air' ? isAirBatch(load) : !isAirBatch(load)
+  return (compatible && load.status !== 'delivered') || load.id === goodsRecord?.container_id
+})
+
 export default function AdminApp() {
   const { profile, signOut, isAdmin, hasPermission } = useAuth()
   const [tab, setTab] = useState('dashboard')
@@ -104,7 +127,7 @@ export default function AdminApp() {
   const [newSup, setNewSup] = useState({ name: '', contact: '', category: '', address: '', notes: '' })
   const [newSupplierPhotos, setNewSupplierPhotos] = useState([])
   const [uploadingSupplierPhotos, setUploadingSupplierPhotos] = useState(false)
-  const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou → Port Klang', status: 'loading', departure_date: '', arrival_date: '' })
+  const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou -> Lagos', status: 'loading', departure_date: '', arrival_date: '' })
   const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
   const [receiptForm, setReceiptForm] = useState({ shipping_cost: '', clearance_cost: '', discount: 0 })
   const [receiptEditForm, setReceiptEditForm] = useState({ shipping_cost: '', clearance_cost: '', discount: '', status: 'unpaid' })
@@ -155,6 +178,12 @@ export default function AdminApp() {
       supabase.removeChannel(channel)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin && ['cbm', 'weight', 'quantity'].includes(goodsSort)) {
+      setGoodsSort('newest')
+    }
+  }, [goodsSort, isAdmin])
 
   useEffect(() => {
     if (!showMsgThread || !messageListRef.current) return
@@ -486,12 +515,13 @@ export default function AdminApp() {
   }
 
   const updateContainerStatus = async (id, status) => {
+    const load = containers.find(item => item.id === id)
     await supabase.from('containers').update({ status }).eq('id', id)
-    // If delivered, update all goods in this container
+    // If delivered, update all goods in this load.
     if (status === 'delivered') {
       await supabase.from('goods').update({ status: 'delivered', updated_at: new Date().toISOString() }).eq('container_id', id)
     }
-    toast.success('Container updated')
+    toast.success(`${loadKindLabel(load)} updated`)
     loadAll()
   }
 
@@ -695,6 +725,8 @@ export default function AdminApp() {
 
   const saveEditedGoods = async () => {
     if (!showEditGoods?.description?.trim()) { toast.error('Description is required'); return }
+    const assignedLoad = containers.find(load => load.id === showEditGoods.container_id)
+    const keepsCompatibleLoad = assignedLoad && (showEditGoods.type === 'air' ? isAirBatch(assignedLoad) : !isAirBatch(assignedLoad))
     const payload = {
       description: showEditGoods.description,
       type: showEditGoods.type,
@@ -706,6 +738,7 @@ export default function AdminApp() {
       tracking_no: showEditGoods.tracking_no || null,
       status: showEditGoods.status,
       notes: showEditGoods.notes || '',
+      container_id: keepsCompatibleLoad ? showEditGoods.container_id : null,
       updated_at: new Date().toISOString(),
     }
     const { error } = await supabase.from('goods').update(payload).eq('id', showEditGoods.id)
@@ -816,11 +849,11 @@ export default function AdminApp() {
   const dashboardStats = [
     (isAdmin || hasPermission('clients')) && { label: 'Total Clients', value: stats.clients, Icon: Users, color: 'var(--blue)' },
     (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'Total Goods', value: stats.goods, Icon: Package, color: 'var(--teal)' },
-    (isAdmin || hasPermission('goods') || hasPermission('containers')) && { label: 'Total CBM', value: safeTotalCbm, Icon: Boxes, color: 'var(--amber)' },
+    isAdmin && { label: 'Total CBM', value: safeTotalCbm, Icon: Boxes, color: 'var(--amber)' },
     (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'In Transit', value: stats.inTransit, Icon: Ship, color: 'var(--amber)' },
     (isAdmin || hasPermission('goods') || hasPermission('scan')) && { label: 'Delivered', value: stats.delivered, Icon: CheckCircle2, color: 'var(--green)' },
     (isAdmin || hasPermission('finance') || hasPermission('receipts')) && { label: 'Receipts', value: stats.receipts, Icon: ReceiptText, color: 'var(--violet)' },
-    (isAdmin || hasPermission('containers')) && { label: 'Containers', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
+    (isAdmin || hasPermission('containers')) && { label: 'Sea/Air Loads', value: stats.containers, Icon: Container, color: 'var(--ink3)' },
     (isAdmin || hasPermission('messages')) && { label: 'Messages', value: stats.messages, Icon: MessageCircle, color: 'var(--red)' },
     (isAdmin || hasPermission('purchases')) && { label: 'Purchase Requests', value: stats.purchases, Icon: ShoppingCart, color: 'var(--violet)' },
     (isAdmin || hasPermission('finance')) && { label: 'Paid Income', value: formatMoney(stats.paidIncome), Icon: Wallet, color: 'var(--green)' },
@@ -838,6 +871,8 @@ export default function AdminApp() {
   const featuredContainerGoods = featuredContainer ? goods.filter(item => item.container_id === featuredContainer.id) : []
   const featuredContainerClients = new Set(featuredContainerGoods.map(item => item.client_id).filter(Boolean)).size
   const featuredContainerCbm = featuredContainerGoods.reduce((sum, item) => sum + (parseFloat(item.cbm) || 0), 0)
+  const featuredContainerWeight = featuredContainerGoods.reduce((sum, item) => sum + (parseFloat(item.weight_kg) || 0), 0)
+  const featuredContainerPackages = featuredContainerGoods.reduce((sum, item) => sum + goodsQuantity(item), 0)
   const splitRoute = route => String(route || 'China -> Nigeria')
     .replaceAll(String.fromCharCode(8594), '->')
     .replaceAll('â†’', '->')
@@ -867,7 +902,7 @@ export default function AdminApp() {
 
   return (
     <div className="app-shell">
-      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'wallet' ? 'Client Prepaid Balances' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
+      <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers & Air Batches' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'wallet' ? 'Client Prepaid Balances' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data" style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, cursor: refreshing ? 'wait' : 'pointer' }}>
@@ -897,7 +932,7 @@ export default function AdminApp() {
                   <span className="voyage-eta">{featuredContainer.arrival_date ? `ETA ${fmtDate(featuredContainer.arrival_date)}` : featuredContainer.status.replace('_', ' ')}</span>
                 </div>
                 <div className="voyage-title">{featuredContainer.container_no}</div>
-                <div className="voyage-meta">{featuredContainerGoods.length} package{featuredContainerGoods.length === 1 ? '' : 's'} · {featuredContainer.type} · {featuredContainer.route}</div>
+                <div className="voyage-meta">{featuredContainerGoods.length} goods record{featuredContainerGoods.length === 1 ? '' : 's'} · {loadKindLabel(featuredContainer)} · {featuredContainer.route}</div>
                 <div className="voyage-track">
                   <div className="voyage-line" />
                   <div className="voyage-line-fill" style={{ width: `${voyagePct}%` }} />
@@ -907,8 +942,9 @@ export default function AdminApp() {
                 </div>
                 <div className="voyage-route"><span>{routeOrigin}</span><span>{routeDestination}</span></div>
                 <div className="voyage-metrics">
-                  <div className="voyage-metric"><strong>{featuredContainerGoods.length}</strong><span>packages</span></div>
-                  <div className="voyage-metric"><strong>{featuredContainerCbm.toFixed(2)}</strong><span>CBM loaded</span></div>
+                  <div className="voyage-metric"><strong>{featuredContainerGoods.length}</strong><span>goods records</span></div>
+                  {isAdmin && <div className="voyage-metric"><strong>{featuredContainerPackages}</strong><span>packages</span></div>}
+                  {isAdmin && <div className="voyage-metric"><strong>{isAirBatch(featuredContainer) ? featuredContainerWeight.toFixed(1) : featuredContainerCbm.toFixed(2)}</strong><span>{isAirBatch(featuredContainer) ? 'kg loaded' : 'CBM loaded'}</span></div>}
                   <div className="voyage-metric"><strong>{featuredContainerClients}</strong><span>clients</span></div>
                 </div>
               </div>
@@ -1015,17 +1051,19 @@ export default function AdminApp() {
         {/* GOODS MANAGEMENT */}
         {tab === 'goods' && hasPermission('goods') && (
           <>
-            <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<div style={{ display: 'flex', gap: 8 }}><button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, recorded_at: g.created_at })))}><Download size={14} />Export</button><button className="btn btn-sm btn-primary" onClick={() => setShowRecordGoods(true)}>+ Record</button></div>} />
+            <SectionHeader title={`All Goods (${filteredGoods.length})`} action={<div style={{ display: 'flex', gap: 8 }}><button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-goods', filteredGoods.map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, ...(isAdmin ? { quantity: goodsQuantity(g), length_cm: g.length_cm, width_cm: g.width_cm, height_cm: g.height_cm, cbm: g.cbm, weight_kg: g.weight_kg } : {}), recorded_at: g.created_at })))}><Download size={14} />Export</button><button className="btn btn-sm btn-primary" onClick={() => setShowRecordGoods(true)}>+ Record</button></div>} />
             <div className="card" style={{ padding: 12 }}>
               <div className="search-control" style={{ marginBottom: 10 }}><Search size={18} /><input placeholder="Search client, shipping mark, goods or tracking number" value={goodsQuery} onChange={e => setGoodsQuery(e.target.value)} /></div>
               <div className="filter-row">
                 <select className="input-field" value={goodsTypeFilter} onChange={e => setGoodsTypeFilter(e.target.value)}><option value="all">All shipment types</option><option value="sea">Sea</option><option value="air">Air</option></select>
                 <select className="input-field" value={goodsStatusFilter} onChange={e => setGoodsStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="in_warehouse">In warehouse</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option></select>
-                <select className="input-field" value={goodsSort} onChange={e => setGoodsSort(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="cbm">Highest CBM</option><option value="weight">Heaviest first</option><option value="quantity">Most packages</option></select>
+                <select className="input-field" value={goodsSort} onChange={e => setGoodsSort(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option>{isAdmin && <option value="cbm">Highest CBM</option>}{isAdmin && <option value="weight">Heaviest first</option>}{isAdmin && <option value="quantity">Most packages</option>}</select>
               </div>
             </div>
             {loading ? <SkeletonList /> : filteredGoods.map(g => {
               const hasReceipt = receipts.find(r => r.goods_id === g.id)
+              const assignLabel = loadAssignmentLabel(g)
+              const compatibleLoads = compatibleLoadsForGoods(containers, g)
               return (
                 <div key={g.id} className="card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -1034,12 +1072,19 @@ export default function AdminApp() {
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
                     <span style={{ color: 'var(--teal-dark)', fontWeight: 600 }}>{g.client?.full_name}</span>
-                    {g.type === 'sea' && g.cbm ? ` · ${g.cbm} CBM` : ''} · {g.weight_kg} kg
+                    {g.client?.shipping_mark ? ` · ${g.client.shipping_mark}` : ''}
                   </div>
                   <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
                     <TypePill type={g.type} />
                     {g.tracking_no && <span style={{ fontSize: 11, color: 'var(--muted)', padding: '2px 8px', background: 'var(--surface)', borderRadius: 20 }}>{g.tracking_no}</span>}
                   </div>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {goodsMeasurementParts(g).map(part => (
+                        <span key={part} style={{ fontSize: 11, color: 'var(--navy)', padding: '4px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', fontWeight: 700 }}>{part}</span>
+                      ))}
+                    </div>
+                  )}
                   <PhotoGallery photos={g.photos?.slice(0, 4)} compact />
                   {/* Container assignment */}
                   <div style={{ marginBottom: 8 }}>
@@ -1047,10 +1092,10 @@ export default function AdminApp() {
                       value={g.container_id || ''}
                       onChange={async e => {
                         await supabase.from('goods').update({ container_id: e.target.value || null }).eq('id', g.id)
-                        toast.success('Container assigned'); loadAll()
+                        toast.success(`${assignLabel[0].toUpperCase()}${assignLabel.slice(1)} assigned`); loadAll()
                       }}>
-                      <option value="">Assign to container…</option>
-                      {containers.filter(c => c.status !== 'delivered').map(c => <option key={c.id} value={c.id}>{c.container_no} ({c.status})</option>)}
+                      <option value="">Assign to {assignLabel}...</option>
+                      {compatibleLoads.map(c => <option key={c.id} value={c.id}>{c.container_no} ({loadKindLabel(c)}, {c.status})</option>)}
                     </select>
                   </div>
                   {/* Status change */}
@@ -1079,13 +1124,20 @@ export default function AdminApp() {
 
         {tab === 'tracking' && hasPermission('scan') && (
           <>
-            <SectionHeader title="Tracking Number Register" action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-tracking-register', trackedGoods.map(g => ({ tracking_no: g.tracking_no, description: g.description, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, cbm: g.cbm, weight_kg: g.weight_kg, received_at: g.created_at })))}><Download size={14} />Export</button>} />
+            <SectionHeader title="Tracking Number Register" action={<button className="btn btn-sm btn-secondary" onClick={() => exportCsv('234cargo-tracking-register', trackedGoods.map(g => ({ tracking_no: g.tracking_no, description: g.description, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, ...(isAdmin ? { quantity: goodsQuantity(g), length_cm: g.length_cm, width_cm: g.width_cm, height_cm: g.height_cm, cbm: g.cbm, weight_kg: g.weight_kg } : {}), received_at: g.created_at })))}><Download size={14} />Export</button>} />
             <div className="search-control"><Search size={18} /><input placeholder="Search tracking number, client, mark or goods" value={trackingQuery} onChange={e => { setTrackingQuery(e.target.value); setTrackingScanResult(null) }} /><button className="search-scan-button" onClick={() => setTrackingScanOpen(true)} title="Scan tracking number" aria-label="Scan tracking number"><Barcode size={18} /></button></div>
             {trackingScanResult && <section className="tracking-owner-card"><div className="tracking-owner-heading"><span>Package owner identified</span><button onClick={() => setTrackingScanResult(null)}>Clear</button></div><div className="tracking-owner-name">{trackingScanResult.client?.full_name}</div><div className="tracking-owner-mark">{trackingScanResult.client?.shipping_mark}</div><div className="tracking-owner-grid"><div><span>Tracking</span><strong>{trackingScanResult.tracking_no}</strong></div><div><span>Shipment</span><strong>{trackingScanResult.type === 'air' ? 'Air freight' : 'Sea freight'}</strong></div><div><span>Package</span><strong>{trackingScanResult.description}</strong></div><div><span>Status</span><StatusPill status={trackingScanResult.status} /></div></div></section>}
             {trackedGoods.length === 0 ? <EmptyState icon="box" title="No matching tracking numbers" text="Tracking numbers recorded by staff will appear here." /> : trackedGoods.map(g => (
               <div key={g.id} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><div><div style={{ color: 'var(--teal-d)', fontWeight: 800, fontSize: 16 }}>{g.tracking_no}</div><div style={{ fontWeight: 700, marginTop: 4 }}>{g.description}</div><div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>{g.client?.full_name} · {g.client?.shipping_mark}</div></div><div style={{ textAlign: 'right' }}><TypePill type={g.type} /><div style={{ marginTop: 7 }}><StatusPill status={g.status} /></div></div></div>
-                <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 10 }}>{g.type === 'sea' ? `${g.cbm || 0} CBM · ` : ''}{g.weight_kg || 0} kg · Recorded {fmtDate(g.created_at)}</div>
+                <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 10 }}>Recorded {fmtDate(g.created_at)}</div>
+                {isAdmin && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {goodsMeasurementParts(g).map(part => (
+                      <span key={part} style={{ fontSize: 11, color: 'var(--navy)', padding: '4px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', fontWeight: 700 }}>{part}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </>
@@ -1107,7 +1159,7 @@ export default function AdminApp() {
             <SectionHeader title="More Tools" />
             {[
               hasPermission('clients') && { id: 'clients', title: 'Client Directory', text: `${clients.length} registered client${clients.length === 1 ? '' : 's'}, with export.`, Icon: Users },
-              (hasPermission('goods') || hasPermission('containers')) && { id: 'containers', title: 'Containers and Parking List', text: 'Manage container loading, routes and unassigned goods.', Icon: Ship },
+              (hasPermission('goods') || hasPermission('containers')) && { id: 'containers', title: 'Containers and Air Batches', text: 'Manage sea containers, air batches, routes and unassigned goods.', Icon: Ship },
               hasPermission('messages') && { id: 'messages', title: 'Client Messages', text: `${clientThreads.length} active conversation${clientThreads.length === 1 ? '' : 's'}.`, Icon: MessageCircle },
               hasPermission('purchases') && { id: 'purchases', title: 'Purchase Requests', text: `${stats.purchases || 0} open request${stats.purchases === 1 ? '' : 's'} from clients.`, Icon: ShoppingCart },
               hasPermission('finance') && { id: 'wallet', title: 'Client Prepaid Balances', text: `${walletTransactions.filter(entry => entry.status === 'pending').length} top-up request${walletTransactions.filter(entry => entry.status === 'pending').length === 1 ? '' : 's'} awaiting verification.`, Icon: Wallet },
@@ -1219,19 +1271,25 @@ export default function AdminApp() {
         {tab === 'containers' && (hasPermission('goods') || hasPermission('containers')) && (
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
-            <SectionHeader title="Containers" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddCont(true)}>+ New</button>} />
+            <SectionHeader title="Containers & Air Batches" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddCont(true)}>+ New</button>} />
             {loading ? <SkeletonList /> : containers.map(c => {
               const cGoods = goods.filter(g => g.container_id === c.id)
               const totalCbm = cGoods.reduce((s, g) => s + (parseFloat(g.cbm) || 0), 0)
+              const totalWeight = cGoods.reduce((s, g) => s + (parseFloat(g.weight_kg) || 0), 0)
+              const totalPackages = cGoods.reduce((s, g) => s + goodsQuantity(g), 0)
+              const airBatch = isAirBatch(c)
               return (
                 <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowContainerDetail(c)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 16 }}>{c.container_no}</div>
+                    <div>
+                      <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, fontSize: 16 }}>{c.container_no}</div>
+                      <div style={{ color: airBatch ? 'var(--teal-dark)' : 'var(--muted)', fontSize: 11, fontWeight: 800, marginTop: 2 }}>{loadKindLabel(c)}</div>
+                    </div>
                     <StatusPill status={c.status} />
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>{c.route} · {c.type}</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>{c.route} · {airBatch ? 'Air freight' : c.type}</div>
                   <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
-                    Dep {fmtDate(c.departure_date)} → ETA {fmtDate(c.arrival_date)}
+                    Dep {fmtDate(c.departure_date)} to ETA {fmtDate(c.arrival_date)}
                   </div>
                   <div className="container-voyage-mini">
                     <span>{String(c.route || '').split(/→|->|-/).map(part => part.trim()).filter(Boolean)[0] || 'China'}</span>
@@ -1239,8 +1297,9 @@ export default function AdminApp() {
                     <span>{String(c.route || '').split(/→|->|-/).map(part => part.trim()).filter(Boolean).slice(-1)[0] || 'Nigeria'}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
-                    <span style={{ color: 'var(--info)' }}>{cGoods.length} items</span>
-                    <span style={{ color: 'var(--amber)' }}>{totalCbm.toFixed(2)} CBM</span>
+                    <span style={{ color: 'var(--info)' }}>{cGoods.length} goods records</span>
+                    {isAdmin && <span style={{ color: 'var(--teal-dark)' }}>{totalPackages} packages</span>}
+                    {isAdmin && <span style={{ color: airBatch ? 'var(--green)' : 'var(--amber)' }}>{airBatch ? `${totalWeight.toFixed(1)} kg` : `${totalCbm.toFixed(2)} CBM`}</span>}
                   </div>
                 </div>
               )
@@ -1248,28 +1307,39 @@ export default function AdminApp() {
 
             {/* Parking list */}
             <div style={{ marginTop: 24 }}>
-              <SectionHeader title="Parking List" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-parking-list', goods.filter(g => !g.container_id).map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, cbm: g.cbm, weight_kg: g.weight_kg, status: g.status })))}><Download size={13} />Export</button>} />
-              {goods.filter(g => !g.container_id).map(g => (
+              <SectionHeader title="Unassigned Goods" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-parking-list', goods.filter(g => !g.container_id).map(g => ({ description: g.description, tracking_no: g.tracking_no, client: g.client?.full_name, shipping_mark: g.client?.shipping_mark, shipment_type: g.type, status: g.status, ...(isAdmin ? { quantity: goodsQuantity(g), length_cm: g.length_cm, width_cm: g.width_cm, height_cm: g.height_cm, cbm: g.cbm, weight_kg: g.weight_kg } : {}) })))}><Download size={13} />Export</button>} />
+              {goods.filter(g => !g.container_id).map(g => {
+                const assignLabel = loadAssignmentLabel(g)
+                const compatibleLoads = compatibleLoadsForGoods(containers, g)
+                return (
                 <div key={g.id} className="card card-sm">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{g.description}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.client?.full_name} · {g.type === 'sea' && g.cbm ? g.cbm + ' CBM · ' : ''}{g.weight_kg} kg</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.client?.full_name}{g.client?.shipping_mark ? ` · ${g.client.shipping_mark}` : ''}</div>
                     </div>
                     <TypePill type={g.type} />
                   </div>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                      {goodsMeasurementParts(g).map(part => (
+                        <span key={part} style={{ fontSize: 11, color: 'var(--navy)', padding: '4px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', fontWeight: 700 }}>{part}</span>
+                      ))}
+                    </div>
+                  )}
                   <select className="input-field" style={{ fontSize: 13, padding: '7px 10px' }} defaultValue=""
                     onChange={async e => {
                       if (!e.target.value) return
                       await supabase.from('goods').update({ container_id: e.target.value }).eq('id', g.id)
-                      toast.success('Assigned!'); loadAll()
+                      toast.success(`${assignLabel[0].toUpperCase()}${assignLabel.slice(1)} assigned`); loadAll()
                     }}>
-                    <option value="">Assign to container…</option>
-                    {containers.filter(c => c.status !== 'delivered').map(c => <option key={c.id} value={c.id}>{c.container_no}</option>)}
+                    <option value="">Assign to {assignLabel}...</option>
+                    {compatibleLoads.map(c => <option key={c.id} value={c.id}>{c.container_no} ({c.status})</option>)}
                   </select>
                 </div>
-              ))}
-              {goods.filter(g => !g.container_id).length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 16 }}>All goods have been assigned to containers.</div>}
+                )
+              })}
+              {goods.filter(g => !g.container_id).length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 16 }}>All goods have been assigned to containers or air batches.</div>}
             </div>
           </>
         )}
@@ -1419,13 +1489,13 @@ export default function AdminApp() {
       <BottomNav tabs={tabs} active={activeNav} onChange={setTab} />
 
       {/* Container detail */}
-      <Modal open={!!showContainerDetail} title="Container Details" onClose={() => setShowContainerDetail(null)}>
+      <Modal open={!!showContainerDetail} title={showContainerDetail && isAirBatch(showContainerDetail) ? 'Air Batch Details' : 'Container Details'} onClose={() => setShowContainerDetail(null)}>
         {showContainerDetail && (
           <>
             <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{showContainerDetail.container_no}</div>
             <StatusPill status={showContainerDetail.status} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '16px 0' }}>
-              {[['Type',showContainerDetail.type],['Route',showContainerDetail.route],['Departure',fmtDate(showContainerDetail.departure_date)],['ETA',fmtDate(showContainerDetail.arrival_date)]].map(([k,v]) => (
+              {[['Kind',loadKindLabel(showContainerDetail)],['Route',showContainerDetail.route],['Departure',fmtDate(showContainerDetail.departure_date)],['ETA',fmtDate(showContainerDetail.arrival_date)]].map(([k,v]) => (
                 <div key={k} style={{ background: 'var(--surface)', borderRadius: 10, padding: 12 }}>
                   <div style={{ fontSize: 11, color: 'var(--muted)' }}>{k}</div>
                   <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{v}</div>
@@ -1439,12 +1509,19 @@ export default function AdminApp() {
                 </button>
               ))}
             </div>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>Goods in this container</div>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Goods in this {isAirBatch(showContainerDetail) ? 'air batch' : 'container'}</div>
             {goods.filter(g => g.container_id === showContainerDetail.id).map(g => (
               <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{g.description}</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.client?.full_name} · {g.type === 'sea' && g.cbm ? g.cbm + ' CBM · ' : ''}{g.weight_kg} kg</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.client?.full_name}{g.client?.shipping_mark ? ` - ${g.client.shipping_mark}` : ''}</div>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                      {goodsMeasurementParts(g).map(part => (
+                        <span key={part} style={{ fontSize: 10, color: 'var(--navy)', padding: '3px 6px', background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)', fontWeight: 700 }}>{part}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <StatusPill status={g.status} />
               </div>
@@ -1802,8 +1879,11 @@ export default function AdminApp() {
       </Modal>
 
       {/* Add Container */}
-      <Modal open={showAddCont} title="New Container" onClose={() => setShowAddCont(false)}>
-        {[['container_no','Container Number','e.g. CONT-2501-A'],['route','Route','e.g. Guangzhou → Port Klang']].map(([k,l,p]) => (
+      <Modal open={showAddCont} title={newCont.type === 'air' ? 'New Air Batch' : 'New Sea Container'} onClose={() => setShowAddCont(false)}>
+        {[
+          ['container_no', newCont.type === 'air' ? 'Batch Number' : 'Container Number', newCont.type === 'air' ? 'e.g. AIR-2026-001' : 'e.g. CONT-2501-A'],
+          ['route', 'Route', 'e.g. Guangzhou -> Lagos'],
+        ].map(([k,l,p]) => (
           <div key={k} className="input-group">
             <label className="input-label">{l}</label>
             <input className="input-field" placeholder={p} value={newCont[k]} onChange={e => setNewCont(p=>({...p,[k]:e.target.value}))} />
@@ -1812,7 +1892,7 @@ export default function AdminApp() {
         <div className="input-group">
           <label className="input-label">Type</label>
           <select className="input-field" value={newCont.type} onChange={e => setNewCont(p=>({...p,type:e.target.value}))}>
-            <option value="20ft">20ft</option><option value="40ft">40ft</option><option value="40hc">40HC</option><option value="air">Air</option>
+            <option value="20ft">20ft Sea Container</option><option value="40ft">40ft Sea Container</option><option value="40hc">40HC Sea Container</option><option value="air">Air Batch</option>
           </select>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -1828,8 +1908,8 @@ export default function AdminApp() {
         <button className="btn btn-primary btn-full" onClick={async () => {
           if (!newCont.container_no) return
           await supabase.from('containers').insert(newCont)
-          toast.success('Container created!'); setShowAddCont(false); setNewCont({ container_no:'',type:'20ft',route:'Guangzhou → Port Klang',status:'loading',departure_date:'',arrival_date:'' }); loadAll()
-        }} style={{ padding: 13 }}>Create Container</button>
+          toast.success(`${newCont.type === 'air' ? 'Air batch' : 'Container'} created!`); setShowAddCont(false); setNewCont({ container_no:'',type:'20ft',route:'Guangzhou -> Lagos',status:'loading',departure_date:'',arrival_date:'' }); loadAll()
+        }} style={{ padding: 13 }}>{newCont.type === 'air' ? 'Create Air Batch' : 'Create Container'}</button>
       </Modal>
     </div>
   )

@@ -320,7 +320,7 @@ export default function ClientApp() {
             {loading ? <SkeletonList n={2} /> : currentShipment ? (
               <section className="shipment-focus-card" onClick={() => setSelectedGoods(currentShipment)}>
                 <div className="shipment-focus-top"><div><span>Current shipment</span><h2>{currentShipment.description}</h2></div><StatusPill status={currentShipment.status} /></div>
-                <div className="shipment-focus-meta"><TypePill type={currentShipment.type} /><span>{currentShipment.quantity || 1} package{(currentShipment.quantity || 1) === 1 ? '' : 's'}</span><span>{currentShipment.weight_kg} kg</span></div>
+                <div className="shipment-focus-meta"><TypePill type={currentShipment.type} /><span>{fmtDate(currentShipment.created_at)}</span></div>
                 <div className="shipment-progress" aria-label={`Shipment is ${currentShipment.status.replace('_', ' ')}`}><span className="progress-step complete"><i />Warehouse</span><span className={`progress-line ${currentShipment.status !== 'in_warehouse' ? 'complete' : ''}`} /><span className={`progress-step ${currentShipment.status !== 'in_warehouse' ? 'complete' : ''}`}><i />In transit</span><span className={`progress-line ${currentShipment.status === 'delivered' ? 'complete' : ''}`} /><span className={`progress-step ${currentShipment.status === 'delivered' ? 'complete' : ''}`}><i />Delivered</span></div>
                 <div className="shipment-focus-footer"><span>{currentShipment.tracking_no || 'Tracking will be added by the warehouse'}</span><span>View details <ArrowRight size={15} /></span></div>
               </section>
@@ -351,8 +351,7 @@ export default function ClientApp() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                   <TypePill type={g.type} />
-                  {g.type === 'sea' && g.cbm && <span style={{ fontSize: 13, color: 'var(--muted)' }}>{g.cbm} m³</span>}
-                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>{g.weight_kg} kg</span>
+                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>{fmtDate(g.created_at)}</span>
                 </div>
                 <PhotoGallery photos={g.photos?.slice(0, 4)} compact />
                 <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between' }}>
@@ -628,10 +627,6 @@ export default function ClientApp() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
               {[
-                selectedGoods.type === 'sea' && selectedGoods.cbm ? ['CBM', selectedGoods.cbm + ' m³'] : null,
-                selectedGoods.type === 'sea' && selectedGoods.length_cm ? ['Dimensions', `${selectedGoods.length_cm}×${selectedGoods.width_cm}×${selectedGoods.height_cm} cm`] : null,
-                ['Packages', (selectedGoods.quantity || 1) + ' package(s)'],
-                ['Weight', selectedGoods.weight_kg + ' kg'],
                 ['Received', fmtDate(selectedGoods.created_at)],
                 ['Updated', fmtDate(selectedGoods.updated_at)],
                 selectedGoods.tracking_no ? ['Tracking', selectedGoods.tracking_no] : null,
