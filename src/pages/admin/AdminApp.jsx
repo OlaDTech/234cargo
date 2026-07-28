@@ -525,6 +525,26 @@ export default function AdminApp() {
     loadAll()
   }
 
+  const saveLoadDetails = async () => {
+    if (!showContainerDetail?.id) return
+    const loadNumber = String(showContainerDetail.container_no || '').trim()
+    if (!loadNumber) {
+      toast.error(`${isAirBatch(showContainerDetail) ? 'Batch' : 'Container'} number is required`)
+      return
+    }
+    const { error } = await supabase.from('containers').update({
+      container_no: loadNumber,
+      departure_date: showContainerDetail.departure_date || null,
+      arrival_date: showContainerDetail.arrival_date || null,
+    }).eq('id', showContainerDetail.id)
+    if (error) {
+      toast.error(error.message || 'Could not update load details')
+      return
+    }
+    toast.success(`${loadKindLabel(showContainerDetail)} details updated`)
+    loadAll()
+  }
+
   const togglePermission = async (staffId, perm, current) => {
     const updated = current.includes(perm) ? current.filter(p => p !== perm) : [...current, perm]
     const { error } = await supabase.from('profiles').update({ permissions: updated }).eq('id', staffId)
@@ -1495,13 +1515,28 @@ export default function AdminApp() {
             <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{showContainerDetail.container_no}</div>
             <StatusPill status={showContainerDetail.status} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '16px 0' }}>
-              {[['Kind',loadKindLabel(showContainerDetail)],['Route',showContainerDetail.route],['Departure',fmtDate(showContainerDetail.departure_date)],['ETA',fmtDate(showContainerDetail.arrival_date)]].map(([k,v]) => (
-                <div key={k} style={{ background: 'var(--surface)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{k}</div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{v}</div>
-                </div>
-              ))}
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <label className="input-label">{isAirBatch(showContainerDetail) ? 'Batch Number' : 'Container Number'}</label>
+                <input className="input-field" value={showContainerDetail.container_no || ''} onChange={e => setShowContainerDetail(prev => ({ ...prev, container_no: e.target.value }))} />
+              </div>
+              <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Kind</div>
+                <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{loadKindLabel(showContainerDetail)}</div>
+              </div>
+              <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Route</div>
+                <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>{showContainerDetail.route || 'Not set'}</div>
+              </div>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <label className="input-label">Departure Date</label>
+                <input className="input-field" type="date" value={showContainerDetail.departure_date || ''} onChange={e => setShowContainerDetail(prev => ({ ...prev, departure_date: e.target.value }))} />
+              </div>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <label className="input-label">Arrival Date</label>
+                <input className="input-field" type="date" value={showContainerDetail.arrival_date || ''} onChange={e => setShowContainerDetail(prev => ({ ...prev, arrival_date: e.target.value }))} />
+              </div>
             </div>
+            <button className="btn btn-secondary btn-full" onClick={saveLoadDetails} style={{ marginBottom: 16 }}><Pencil size={14} />Save Load Details</button>
             <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
               {['loading','in_transit','delivered'].map(s => (
                 <button key={s} onClick={() => updateContainerStatus(showContainerDetail.id, s)} style={{ flex: 1, padding: '8px 6px', borderRadius: 8, border: '1px solid var(--border)', background: showContainerDetail.status === s ? 'var(--teal)' : 'var(--surface)', color: showContainerDetail.status === s ? 'var(--navy)' : 'var(--muted)', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>

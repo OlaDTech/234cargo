@@ -80,7 +80,7 @@ Deno.serve(async req => {
     if (req.method === 'GET') {
       const [clientResult, goodsResult, announcementsResult, suppliersResult, messagesResult, receiptsResult, settingsResult, purchasesResult] = await Promise.all([
         admin.from('clients').select('id, full_name, phone, country, state, shipping_mark, notes, created_at, updated_at').eq('id', clientId).single(),
-        admin.from('goods').select('id, client_id, description, type, tracking_no, status, notes, photos, created_at, updated_at').eq('client_id', clientId).order('created_at', { ascending: false }),
+        admin.from('goods').select('id, client_id, description, type, tracking_no, status, notes, photos, cbm, created_at, updated_at').eq('client_id', clientId).order('created_at', { ascending: false }),
         admin.from('announcements').select('id, title, body, is_important, created_at').order('created_at', { ascending: false }),
         admin.from('suppliers').select('id, name, contact, category, address, photos, notes, created_at').order('name'),
         admin.from('messages').select('id, sender, message, is_read, created_at').eq('client_id', clientId).order('created_at'),
