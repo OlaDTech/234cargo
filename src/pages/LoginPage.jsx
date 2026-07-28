@@ -4,6 +4,27 @@ import { clientSignIn, supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { Icons } from '../components/Icons'
 
+const bannerSlides = [
+  {
+    label: 'Guangzhou receiving',
+    title: 'Goods checked into your shipping mark',
+    text: 'Suppliers send to our China warehouse, then clients follow every update online.',
+    image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1800&q=82',
+  },
+  {
+    label: 'Sea freight loading',
+    title: 'Consolidated cargo from China to Nigeria',
+    text: 'Sea shipments are grouped, billed and tracked from warehouse to delivery.',
+    image: 'https://images.unsplash.com/photo-1494412651409-8963ce7935a7?auto=format&fit=crop&w=1800&q=82',
+  },
+  {
+    label: 'Air freight batches',
+    title: 'Faster dispatch for urgent goods',
+    text: 'Air cargo moves in clear batches with status updates clients can understand.',
+    image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=1800&q=82',
+  },
+]
+
 export default function LoginPage() {
   const { signInStaff, signInClient } = useAuth()
   const loginRoute = window.location.hash.replace(/^#/, '') || window.location.pathname
@@ -82,6 +103,17 @@ export default function LoginPage() {
         </nav>
 
         <section className="public-hero">
+          <div className="public-hero-slideshow" aria-hidden="true">
+            {bannerSlides.map((slide, index) => (
+              <article key={slide.title} className="public-hero-slide" style={{ backgroundImage: `url(${slide.image})`, animationDelay: `${index * 6}s` }}>
+                <div className="public-slide-caption">
+                  <span>{slide.label}</span>
+                  <strong>{slide.title}</strong>
+                  <em>{slide.text}</em>
+                </div>
+              </article>
+            ))}
+          </div>
           <div className="public-hero-copy">
             <div className="public-eyebrow">China to Nigeria freight portal</div>
             <h1>234Cargo Client Portal</h1>
@@ -96,27 +128,8 @@ export default function LoginPage() {
               <span><strong>RMB</strong> purchases</span>
             </div>
           </div>
-          <div className="public-hero-visual" aria-label="234Cargo shipment dashboard preview">
-            <div className="public-photo-strip" role="img" aria-label="Cargo containers in transit" />
-            <div className="public-route-card">
-              <div className="public-route-top">
-                <span>Live shipment</span>
-                <strong>GZ-LOS-024</strong>
-              </div>
-              <div className="public-route-line"><i /></div>
-              <div className="public-route-ports"><span>Guangzhou</span><span>Lagos</span></div>
-            </div>
-            <div className="public-phone-card">
-              <div className="public-phone-head"><span>Client Portal</span><strong>MY-001-AC</strong></div>
-              <div className="public-phone-status">
-                <span className="is-done">Warehouse</span>
-                <span className="is-active">In transit</span>
-                <span>Delivered</span>
-              </div>
-              <div className="public-phone-metrics">
-                <b>12</b><span>packages</span><b>4.8</b><span>CBM</span>
-              </div>
-            </div>
+          <div className="public-slide-dots" aria-hidden="true">
+            {bannerSlides.map((slide, index) => <span key={slide.label} style={{ animationDelay: `${index * 6}s` }} />)}
           </div>
         </section>
 
