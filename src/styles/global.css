@@ -300,8 +300,9 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .public-link:hover { color: var(--teal-d); }
 .public-nav-cta { min-height: 44px; border: 1px solid var(--ink); border-radius: 8px; background: var(--ink); color: #fff; padding: 0 15px; cursor: pointer; font: 800 13px 'Inter', sans-serif; }
 .public-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .88fr); gap: clamp(32px, 6vw, 76px); align-items: center; padding: 66px 0 42px; }
+.public-hero-copy { min-width: 0; }
 .public-eyebrow { color: var(--teal-d); font-size: 11px; font-weight: 900; letter-spacing: .85px; text-transform: uppercase; }
-.public-hero h1 { max-width: 660px; color: var(--ink); font: 900 60px/1.02 'Space Grotesk', sans-serif; letter-spacing: 0; margin: 12px 0 18px; }
+.public-hero h1 { max-width: 660px; color: var(--ink); font: 900 60px/1.02 'Space Grotesk', sans-serif; letter-spacing: 0; margin: 12px 0 18px; overflow-wrap: anywhere; }
 .public-hero p { max-width: 590px; color: var(--t2); font-size: 18px; line-height: 1.7; }
 .public-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; }
 .public-hero-actions .btn { min-height: 48px; }
@@ -397,7 +398,7 @@ textarea.input-field { resize: vertical; min-height: 88px; }
   .public-nav { margin-left: 0; margin-right: 0; }
   .public-brand img { width: 150px; }
   .public-hero { padding-top: 32px; }
-  .public-hero h1 { font-size: 36px; }
+  .public-hero h1 { font-size: 32px; line-height: 1.08; }
   .public-hero p { font-size: 16px; }
   .public-hero-actions { display: grid; grid-template-columns: 1fr; }
   .public-hero-actions .btn { width: 100%; white-space: normal; }
