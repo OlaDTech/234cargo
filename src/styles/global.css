@@ -394,11 +394,13 @@ textarea.input-field { resize: vertical; min-height: 88px; }
   .login-card { border: 0; border-radius: 0; box-shadow: none; padding: 22px 18px 28px; }
   .login-wordmark { width: 154px; margin-bottom: 24px; }
   .login-heading { font-size: 28px; }
-  .public-nav, .public-hero, .public-trust-strip, .public-section, .public-cta, .public-footer { width: auto; max-width: none; margin-left: 16px; margin-right: 16px; }
-  .public-nav { margin-left: 0; margin-right: 0; }
+  .public-site { max-width: 100vw; }
+  .public-hero, .public-trust-strip, .public-section, .public-cta, .public-footer { width: calc(100% - 32px); max-width: calc(100vw - 32px); margin-left: auto; margin-right: auto; }
+  .public-nav { width: 100%; max-width: 100vw; margin-left: 0; margin-right: 0; }
+  .public-hero-copy, .public-hero h1, .public-hero p { width: 100%; max-width: 100%; }
   .public-brand img { width: 150px; }
   .public-hero { padding-top: 32px; }
-  .public-hero h1 { font-size: 32px; line-height: 1.08; }
+  .public-hero h1 { font-size: 30px; line-height: 1.08; }
   .public-hero p { font-size: 16px; }
   .public-hero-actions { display: grid; grid-template-columns: 1fr; }
   .public-hero-actions .btn { width: 100%; white-space: normal; }
