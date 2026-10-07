@@ -2,7 +2,7 @@ const sanitize = value => String(value ?? '')
   .replace(/[\\()]/g, '\\$&')
   .replace(/[^\x20-\x7E]/g, ' ')
 
-const money = value => `NGN ${(Number(value) || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (value, currency = 'NGN') => `${String(currency || 'NGN').toUpperCase()} ${(Number(value) || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const wrapText = (value, width = 62) => {
   const words = String(value ?? '').split(/\s+/).filter(Boolean)
@@ -52,6 +52,7 @@ export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Lo
   let items = []
   try { items = typeof receipt.items === 'string' ? JSON.parse(receipt.items || '[]') : (receipt.items || []) }
   catch { items = [] }
+  const currency = receipt.currency || 'NGN'
   const commands = []
   const text = (x, y, size, value, bold = false) => commands.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf 1 0 0 1 ${x} ${y} Tm (${sanitize(value)}) Tj ET`)
   const line = (x1, y1, x2, y2) => commands.push(`0.78 G 0.7 w ${x1} ${y1} m ${x2} ${y2} l S`)
@@ -89,9 +90,12 @@ export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Lo
     descriptionLines.forEach((description, index) => {
       text(56, y, 9, description)
       if (index === 0) {
-        text(350, y, 9, item.qty ?? 1)
-        text(405, y, 9, money(item.unit_price))
-        text(478, y, 9, money((Number(item.qty) || 0) * (Number(item.unit_price) || 0)))
+        const quantity = Number(item.qty ?? item.quantity ?? 1) || 1
+        const rate = Number(item.unit_price ?? item.rate ?? 0) || 0
+        const amount = Number(item.amount ?? quantity * rate) || 0
+        text(350, y, 9, quantity)
+        text(405, y, 9, money(rate, currency))
+        text(478, y, 9, money(amount, currency))
       }
       y -= 14
     })
@@ -102,14 +106,14 @@ export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Lo
   line(332, y, 547, y)
   y -= 20
   text(390, y, 10, 'Subtotal')
-  text(478, y, 10, money(receipt.subtotal))
+  text(478, y, 10, money(receipt.subtotal, currency))
   y -= 18
   text(390, y, 10, 'Discount')
-  text(478, y, 10, money(receipt.discount))
+  text(478, y, 10, money(receipt.discount, currency))
   y -= 22
   line(332, y + 9, 547, y + 9)
   text(390, y, 13, 'TOTAL', true)
-  text(478, y, 13, money(receipt.total), true)
+  text(478, y, 13, money(receipt.total, currency), true)
   y -= 62
   line(48, y, 547, y)
   text(48, y - 22, 9, 'Thank you for choosing our China-to-Nigeria logistics service.')

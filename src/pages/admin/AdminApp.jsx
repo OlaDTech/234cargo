@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw, ShoppingCart, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, payWalletPurchase, payWalletReceipt, recordWalletEntry, supabase, updateClient, uploadSupplierPhoto } from '../../lib/supabase'
+import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, payWalletPurchase, payWalletReceipt, recordWalletEntry, supabase, updateClient, uploadGoodsPhoto, uploadSupplierPhoto } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, PhotoUploader, TabRow, ScannerModal, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
-import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 import { marketplaceUrl, purchasePlatformLabel, purchaseStatusMeta, PURCHASE_STATUSES } from '../../lib/purchaseRequests'
 
@@ -25,13 +24,10 @@ const WAREHOUSE_SETTING_FIELDS = {
   ],
 }
 
-const RECEIPT_RATE_SETTING_KEYS = new Set(['sea_rate_cbm', 'sea_rate_kg', 'air_rate_kg'])
-
 function settingsWithSeparateWarehouses(settings = {}) {
   const valueFor = (key, legacyKey) => settings[key] || settings[legacyKey] || ''
-  const settingsWithoutReceiptRates = Object.fromEntries(Object.entries(settings).filter(([key]) => !RECEIPT_RATE_SETTING_KEYS.has(key)))
   return {
-    ...settingsWithoutReceiptRates,
+    ...settings,
     china_sea_warehouse_name: valueFor('china_sea_warehouse_name', 'china_warehouse_name'),
     china_sea_warehouse_address: valueFor('china_sea_warehouse_address', 'china_warehouse_address'),
     china_sea_warehouse_phone: valueFor('china_sea_warehouse_phone', 'china_warehouse_phone'),
@@ -113,6 +109,8 @@ export default function AdminApp() {
   const [showAddClient, setShowAddClient] = useState(false)
   const [showEditClient, setShowEditClient] = useState(null)
   const [showEditGoods, setShowEditGoods] = useState(null)
+  const [editGoodsPhotos, setEditGoodsPhotos] = useState([])
+  const [uploadingEditGoodsPhotos, setUploadingEditGoodsPhotos] = useState(false)
   const [showRecordGoods, setShowRecordGoods] = useState(false)
   const [showExpenseForm, setShowExpenseForm] = useState(null)
   const [showClientLabel, setShowClientLabel] = useState(null)
@@ -129,8 +127,9 @@ export default function AdminApp() {
   const [uploadingSupplierPhotos, setUploadingSupplierPhotos] = useState(false)
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou -> Lagos', status: 'loading', departure_date: '', arrival_date: '' })
   const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
-  const [receiptForm, setReceiptForm] = useState({ shipping_cost: '', clearance_cost: '', discount: 0 })
-  const [receiptEditForm, setReceiptEditForm] = useState({ shipping_cost: '', clearance_cost: '', discount: '', status: 'unpaid' })
+  const [receiptForm, setReceiptForm] = useState({ discount: 0 })
+  const [generatingReceipt, setGeneratingReceipt] = useState(false)
+  const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
   const [expenseForm, setExpenseForm] = useState({ title: '', category: 'Operations', amount: '', expense_date: new Date().toISOString().slice(0, 10), notes: '' })
   const [purchaseEditForm, setPurchaseEditForm] = useState({ status: 'submitted', quoted_amount_rmb: '', team_notes: '', client_message: '' })
@@ -242,28 +241,38 @@ export default function AdminApp() {
   }
 
   const generateReceipt = async () => {
-    if (!showReceiptGen) return
+    if (!showReceiptGen || generatingReceipt) return
     const g = goods.find(x => x.id === showReceiptGen.goods_id)
-    const freightType = g?.type === 'air' ? 'air' : 'sea'
-    const freightLabel = freightType === 'air' ? 'Air Freight' : 'Sea Freight'
-    const shippingCost = Math.max(0, parseFloat(receiptForm.shipping_cost) || 0)
-    const clearanceCost = Math.max(0, parseFloat(receiptForm.clearance_cost) || 0)
-    if (shippingCost <= 0 && clearanceCost <= 0) {
-      toast.error('Enter a shipping cost or clearance cost')
-      return
-    }
-    const items = [
-      { kind: 'shipping', freight_type: freightType, desc: `${freightLabel} Shipping Cost`, qty: 1, unit_price: shippingCost },
-      { kind: 'clearance', freight_type: freightType, desc: `${freightLabel} Clearance Cost`, qty: 1, unit_price: clearanceCost },
-    ]
-    const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0)
+    if (!g) { toast.error('The goods record for this receipt could not be found.'); return }
+    const ratesCbm = parseFloat(settings.sea_rate_cbm || 150000)
+    const ratesKg = g.type === 'air' ? parseFloat(settings.air_rate_kg || 18000) : parseFloat(settings.sea_rate_kg || 1200)
+    const items = g.type === 'sea'
+      ? [{ desc: 'Sea Freight (CBM)', qty: parseFloat(g.cbm) || 0, unit_price: ratesCbm }, { desc: 'Weight Surcharge', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
+      : [{ desc: 'Air Freight (kg)', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
+    const billableItems = items.filter(item => item.qty > 0 && item.unit_price >= 0)
+    const subtotal = billableItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
     const discount = Math.max(0, parseFloat(receiptForm.discount) || 0)
-    const total = Math.max(0, subtotal - discount)
-    const { data: recNo } = await supabase.rpc('generate_receipt_no')
-    const { error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: showReceiptGen.goods_id, items: JSON.stringify(items), subtotal, discount, total, currency: 'NGN', issued_by: profile?.id })
-    if (error) { toast.error(error.message); return }
-    toast.success('Receipt ' + recNo + ' generated!')
-    setShowReceiptGen(null); setReceiptForm({ shipping_cost: '', clearance_cost: '', discount: 0 }); loadAll()
+    if (subtotal <= 0) { toast.error('Add a billable CBM or weight before generating the receipt.'); return }
+    if (discount > subtotal) { toast.error('Discount cannot be greater than the receipt subtotal.'); return }
+
+    setGeneratingReceipt(true)
+    try {
+      const existing = receipts.find(receipt => receipt.goods_id === g.id && receipt.status !== 'cancelled')
+      if (existing && !window.confirm(`Receipt ${existing.receipt_no} already exists for these goods. Generate another receipt anyway?`)) return
+      const { data: recNo, error: numberError } = await supabase.rpc('generate_receipt_no')
+      if (numberError || !recNo) throw numberError || new Error('Could not generate a receipt number.')
+      const { data: created, error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: g.id, items: billableItems, subtotal, discount, total: subtotal - discount, currency: 'NGN', issued_by: profile?.id }).select('*, client:clients(full_name, phone, shipping_mark), goods:goods(description, type)').single()
+      if (error) throw error
+      toast.success('Receipt ' + recNo + ' generated!')
+      setShowReceiptGen(null)
+      setReceiptForm({ discount: 0 })
+      setShowReceiptView(created)
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not generate the receipt.')
+    } finally {
+      setGeneratingReceipt(false)
+    }
   }
 
   const refreshData = async () => {
@@ -274,11 +283,9 @@ export default function AdminApp() {
   }
 
   const openReceiptEdit = receipt => {
-    const costs = receiptCostBreakdown(receipt)
     setShowReceiptEdit(receipt)
     setReceiptEditForm({
-      shipping_cost: String(costs.shipping_cost),
-      clearance_cost: String(costs.clearance_cost),
+      subtotal: String(receipt.subtotal ?? 0),
       discount: String(receipt.discount ?? 0),
       status: receipt.status || 'unpaid',
     })
@@ -286,20 +293,11 @@ export default function AdminApp() {
 
   const saveReceiptEdit = async () => {
     if (!showReceiptEdit) return
-    const shippingCost = Math.max(0, parseFloat(receiptEditForm.shipping_cost) || 0)
-    const clearanceCost = Math.max(0, parseFloat(receiptEditForm.clearance_cost) || 0)
-    const freightType = showReceiptEdit.goods?.type === 'air' ? 'air' : 'sea'
-    const freightLabel = freightType === 'air' ? 'Air Freight' : 'Sea Freight'
-    const items = [
-      { kind: 'shipping', freight_type: freightType, desc: `${freightLabel} Shipping Cost`, qty: 1, unit_price: shippingCost },
-      { kind: 'clearance', freight_type: freightType, desc: `${freightLabel} Clearance Cost`, qty: 1, unit_price: clearanceCost },
-    ]
-    const subtotal = shippingCost + clearanceCost
+    const subtotal = Math.max(0, parseFloat(receiptEditForm.subtotal) || 0)
     const discount = Math.max(0, parseFloat(receiptEditForm.discount) || 0)
     const status = receiptEditForm.status === 'paid' ? 'paid' : 'unpaid'
     const { error } = await supabase.from('receipts').update({
       subtotal,
-      items: JSON.stringify(items),
       discount,
       total: Math.max(0, subtotal - discount),
       status,
@@ -743,29 +741,74 @@ export default function AdminApp() {
     }
   }
 
+  const openGoodsEdit = goodsRecord => {
+    editGoodsPhotos.forEach(item => item.preview && URL.revokeObjectURL(item.preview))
+    setEditGoodsPhotos([])
+    setShowEditGoods({ ...goodsRecord, photos: Array.isArray(goodsRecord.photos) ? goodsRecord.photos.filter(Boolean) : [] })
+  }
+
+  const closeGoodsEdit = () => {
+    editGoodsPhotos.forEach(item => item.preview && URL.revokeObjectURL(item.preview))
+    setEditGoodsPhotos([])
+    setShowEditGoods(null)
+  }
+
+  const addEditGoodsPhotos = files => {
+    const currentCount = (showEditGoods?.photos?.length || 0) + editGoodsPhotos.length
+    const available = Math.max(0, 10 - currentCount)
+    const imageFiles = files.filter(file => file.type?.startsWith('image/')).slice(0, available)
+    if (imageFiles.length < files.length) toast.error(available === 0 ? 'A maximum of 10 goods photos is allowed.' : 'Only image files can be added.')
+    setEditGoodsPhotos(previous => [...previous, ...imageFiles.map(file => ({ file, preview: URL.createObjectURL(file) }))])
+  }
+
+  const removeEditGoodsPhoto = index => {
+    const existingPhotos = showEditGoods?.photos || []
+    if (index < existingPhotos.length) {
+      setShowEditGoods(current => ({ ...current, photos: current.photos.filter((_, photoIndex) => photoIndex !== index) }))
+      return
+    }
+    const pendingIndex = index - existingPhotos.length
+    setEditGoodsPhotos(previous => {
+      const item = previous[pendingIndex]
+      if (item?.preview) URL.revokeObjectURL(item.preview)
+      return previous.filter((_, photoIndex) => photoIndex !== pendingIndex)
+    })
+  }
+
   const saveEditedGoods = async () => {
     if (!showEditGoods?.description?.trim()) { toast.error('Description is required'); return }
     const assignedLoad = containers.find(load => load.id === showEditGoods.container_id)
     const keepsCompatibleLoad = assignedLoad && (showEditGoods.type === 'air' ? isAirBatch(assignedLoad) : !isAirBatch(assignedLoad))
-    const payload = {
-      description: showEditGoods.description,
-      type: showEditGoods.type,
-      length_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.length_cm) || null : null,
-      width_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.width_cm) || null : null,
-      height_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.height_cm) || null : null,
-      quantity: parseInt(showEditGoods.quantity, 10) || 1,
-      weight_kg: parseFloat(showEditGoods.weight_kg) || 0,
-      tracking_no: showEditGoods.tracking_no || null,
-      status: showEditGoods.status,
-      notes: showEditGoods.notes || '',
-      container_id: keepsCompatibleLoad ? showEditGoods.container_id : null,
-      updated_at: new Date().toISOString(),
+    setUploadingEditGoodsPhotos(true)
+    try {
+      const uploadedPhotos = editGoodsPhotos.length
+        ? await Promise.all(editGoodsPhotos.map(item => uploadGoodsPhoto(item.file, showEditGoods.id)))
+        : []
+      const payload = {
+        description: showEditGoods.description.trim(),
+        type: showEditGoods.type,
+        length_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.length_cm) || null : null,
+        width_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.width_cm) || null : null,
+        height_cm: showEditGoods.type === 'sea' ? parseFloat(showEditGoods.height_cm) || null : null,
+        quantity: parseInt(showEditGoods.quantity, 10) || 1,
+        weight_kg: parseFloat(showEditGoods.weight_kg) || 0,
+        tracking_no: showEditGoods.tracking_no || null,
+        status: showEditGoods.status,
+        notes: showEditGoods.notes || '',
+        photos: [...(showEditGoods.photos || []), ...uploadedPhotos],
+        container_id: keepsCompatibleLoad ? showEditGoods.container_id : null,
+        updated_at: new Date().toISOString(),
+      }
+      const { error } = await supabase.from('goods').update(payload).eq('id', showEditGoods.id)
+      if (error) throw error
+      toast.success(uploadedPhotos.length ? `Goods updated with ${uploadedPhotos.length} new photo${uploadedPhotos.length === 1 ? '' : 's'}` : 'Goods updated')
+      closeGoodsEdit()
+      loadAll()
+    } catch (error) {
+      toast.error(error.message || 'Could not update these goods.')
+    } finally {
+      setUploadingEditGoodsPhotos(false)
     }
-    const { error } = await supabase.from('goods').update(payload).eq('id', showEditGoods.id)
-    if (error) { toast.error(error.message); return }
-    toast.success('Goods updated')
-    setShowEditGoods(null)
-    loadAll()
   }
 
   const removeRecord = async (table, id, label) => {
@@ -1128,10 +1171,10 @@ export default function AdminApp() {
                   </div>
                   {/* Receipt */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button onClick={() => setShowEditGoods(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
+                    <button onClick={() => openGoodsEdit(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
                     <button onClick={() => deleteGoodsRecord(g)} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
                     {!hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
-                      <button onClick={() => { setReceiptForm({ shipping_cost: '', clearance_cost: '', discount: 0 }); setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g }) }} className="btn btn-sm btn-secondary">Generate Receipt</button>
+                      <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
                     ) : hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
                       <button onClick={() => setShowReceiptView(hasReceipt)} className="btn btn-sm btn-ghost">View Receipt</button>
                     ) : null}
@@ -1491,6 +1534,16 @@ export default function AdminApp() {
               </div>
             </div>
 
+            <div className="card">
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 16 }}>Rates</div>
+              {[['sea_rate_cbm','Sea Freight Rate (₦/CBM)'],['sea_rate_kg','Sea Surcharge (₦/kg)'],['air_rate_kg','Air Freight Rate (₦/kg)']].map(([k,l]) => (
+                <div key={k} className="input-group">
+                  <label className="input-label">{l}</label>
+                  <input className="input-field" type="number" step="0.01" value={settingsForm[k] || ''} onChange={e => setSettingsForm(p => ({...p, [k]: e.target.value}))} />
+                </div>
+              ))}
+            </div>
+
             <button className="btn btn-primary btn-full" onClick={saveSettings} style={{ padding: 14, fontSize: 16 }}>Save All Settings</button>
 
             {/* Preview label */}
@@ -1649,7 +1702,7 @@ export default function AdminApp() {
       <Modal open={!!showClientLabel} title="Client Shipping Label" onClose={() => setShowClientLabel(null)}>
         <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
         <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
-        <button className="btn btn-navy btn-full" onClick={async () => { if (!(await downloadShippingLabelPdf({ client: showClientLabel, settings, shipmentType: adminLabelType }))) toast.error('Could not download this label') }} style={{ marginTop: 14 }}><Download size={16} />Download 100 x 100 mm Label</button>
+        <button className="btn btn-navy btn-full" onClick={() => window.print()} style={{ marginTop: 14 }}><Download size={16} />Download / Print Label</button>
       </Modal>
 
       <Modal open={showAddClient || !!showEditClient} title={showEditClient ? 'Edit Client' : 'Register Client'} onClose={() => { setShowAddClient(false); setShowEditClient(null) }}>
@@ -1683,7 +1736,7 @@ export default function AdminApp() {
         <RecordGoods onDone={() => { setShowRecordGoods(false); loadAll() }} />
       </Modal>
 
-      <Modal open={!!showEditGoods} title="Edit Goods" onClose={() => setShowEditGoods(null)}>
+      <Modal open={!!showEditGoods} title="Edit Goods" onClose={closeGoodsEdit}>
         {showEditGoods && (
           <>
             <div className="input-group">
@@ -1731,9 +1784,14 @@ export default function AdminApp() {
               <label className="input-label">Notes</label>
               <textarea className="input-field" rows={3} value={showEditGoods.notes || ''} onChange={e => setShowEditGoods(p => ({ ...p, notes: e.target.value }))} />
             </div>
-            <PhotoGallery photos={showEditGoods.photos} />
-            <button className="btn btn-primary btn-full" onClick={saveEditedGoods} style={{ marginTop: 14 }}>Save Changes</button>
-            <button className="btn btn-danger btn-full" onClick={() => deleteGoodsRecord(showEditGoods)} style={{ marginTop: 8 }}><Trash2 size={15} />Delete Mistaken Goods</button>
+            <PhotoUploader
+              photos={[...(showEditGoods.photos || []), ...editGoodsPhotos.map(item => item.preview)]}
+              uploading={uploadingEditGoodsPhotos}
+              onAdd={addEditGoodsPhotos}
+              onRemove={removeEditGoodsPhoto}
+            />
+            <button className="btn btn-primary btn-full" disabled={uploadingEditGoodsPhotos} onClick={saveEditedGoods} style={{ marginTop: 14 }}>{uploadingEditGoodsPhotos ? 'Uploading Photos…' : 'Save Changes'}</button>
+            <button className="btn btn-danger btn-full" disabled={uploadingEditGoodsPhotos} onClick={() => deleteGoodsRecord(showEditGoods)} style={{ marginTop: 8 }}><Trash2 size={15} />Delete Mistaken Goods</button>
           </>
         )}
       </Modal>
@@ -1776,25 +1834,17 @@ export default function AdminApp() {
               <div style={{ fontWeight: 600 }}>{clients.find(c=>c.id===showReceiptGen.client_id)?.full_name}</div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Goods</div>
               <div style={{ fontWeight: 600 }}>{showReceiptGen.goods?.description}</div>
-              <div style={{ fontSize: 12, color: 'var(--teal-d)', fontWeight: 700, marginTop: 8 }}>{showReceiptGen.goods?.type === 'air' ? 'Air Freight' : 'Sea Freight'}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
+                {showReceiptGen.goods?.type === 'sea'
+                  ? `Rate: ₦${settings.sea_rate_cbm}/CBM + ₦${settings.sea_rate_kg}/kg`
+                  : `Rate: ₦${settings.air_rate_kg}/kg`}
+              </div>
             </div>
             <div className="input-group">
-              <label className="input-label">{showReceiptGen.goods?.type === 'air' ? 'Air' : 'Sea'} Shipping Cost (NGN)</label>
-              <input className="input-field" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={receiptForm.shipping_cost} onChange={e => setReceiptForm(p=>({...p, shipping_cost: e.target.value}))} />
-            </div>
-            <div className="input-group">
-              <label className="input-label">{showReceiptGen.goods?.type === 'air' ? 'Air' : 'Sea'} Clearance Cost (NGN)</label>
-              <input className="input-field" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={receiptForm.clearance_cost} onChange={e => setReceiptForm(p=>({...p, clearance_cost: e.target.value}))} />
-            </div>
-            <div className="input-group">
-              <label className="input-label">Discount (NGN)</label>
+              <label className="input-label">Discount (₦)</label>
               <input className="input-field" type="number" min="0" step="0.01" placeholder="0.00" value={receiptForm.discount} onChange={e => setReceiptForm(p=>({...p, discount: e.target.value}))} />
             </div>
-            <div className="receipt-total" style={{ marginBottom: 16 }}>
-              <span>Total Due</span>
-              <strong>{formatMoney(Math.max(0, (parseFloat(receiptForm.shipping_cost) || 0) + (parseFloat(receiptForm.clearance_cost) || 0) - (parseFloat(receiptForm.discount) || 0)), 'NGN')}</strong>
-            </div>
-            <button className="btn btn-primary btn-full" onClick={generateReceipt} style={{ padding: 13 }}>Generate & Issue Receipt</button>
+            <button className="btn btn-primary btn-full" disabled={generatingReceipt} onClick={generateReceipt} style={{ padding: 13 }}>{generatingReceipt ? 'Generating Receipt…' : 'Generate & Issue Receipt'}</button>
           </>
         )}
       </Modal>
@@ -1820,12 +1870,8 @@ export default function AdminApp() {
           <>
             <div className="banner banner-info" style={{ marginBottom: 14 }}>{showReceiptEdit.receipt_no}</div>
             <div className="input-group">
-              <label className="input-label">Shipping Cost (NGN)</label>
-              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.shipping_cost} onChange={event => setReceiptEditForm(form => ({ ...form, shipping_cost: event.target.value }))} />
-            </div>
-            <div className="input-group">
-              <label className="input-label">Clearance Cost (NGN)</label>
-              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.clearance_cost} onChange={event => setReceiptEditForm(form => ({ ...form, clearance_cost: event.target.value }))} />
+              <label className="input-label">Subtotal (NGN)</label>
+              <input className="input-field" type="number" min="0" step="0.01" value={receiptEditForm.subtotal} onChange={event => setReceiptEditForm(form => ({ ...form, subtotal: event.target.value }))} />
             </div>
             <div className="input-group">
               <label className="input-label">Discount (NGN)</label>
@@ -1840,7 +1886,7 @@ export default function AdminApp() {
             </div>
             <div className="receipt-total" style={{ marginBottom: 16 }}>
               <span>Updated Total</span>
-              <strong>{formatMoney(Math.max(0, (parseFloat(receiptEditForm.shipping_cost) || 0) + (parseFloat(receiptEditForm.clearance_cost) || 0) - (parseFloat(receiptEditForm.discount) || 0)), 'NGN')}</strong>
+              <strong>{formatMoney(Math.max(0, (parseFloat(receiptEditForm.subtotal) || 0) - (parseFloat(receiptEditForm.discount) || 0)), showReceiptEdit.currency || 'NGN')}</strong>
             </div>
             <button className="btn btn-primary btn-full" onClick={saveReceiptEdit}>Save Receipt Changes</button>
           </>

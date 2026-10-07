@@ -4,7 +4,6 @@ import { Flashlight, FlashlightOff } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Icons } from './Icons'
 import { generateQR } from '../lib/qr'
-import { maskPhone, shippingLabelPayload, warehouseForShipment } from '../lib/shippingLabel'
 
 // Re-export the icon set so pages can import from one place
 export { Icons } from './Icons'
@@ -247,7 +246,13 @@ export function CBMCalculator({ value, onChange }) {
 }
 
 export function PhotoUploader({ photos = [], onAdd, onRemove, uploading }) {
-  const ref = useRef()
+  const galleryRef = useRef()
+  const cameraRef = useRef()
+  const addFiles = event => {
+    const files = Array.from(event.target.files || [])
+    if (files.length) onAdd(files)
+    event.target.value = ''
+  }
   return (
     <div style={{ marginBottom: 14 }}>
       <label className="input-label">Photos</label>
@@ -260,12 +265,18 @@ export function PhotoUploader({ photos = [], onAdd, onRemove, uploading }) {
             <button onClick={() => onRemove(i)} style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.65)', border: 'none', color: '#fff', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
         ))}
-        <div className="photo-add" onClick={() => ref.current?.click()}>
-          {uploading ? '⏳' : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 5v14M5 12h14"/></svg>}
-        </div>
-        <input ref={ref} type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }}
-          onChange={e => { onAdd(Array.from(e.target.files)); e.target.value = '' }} />
       </div>
+      <div className="photo-upload-actions">
+        <button type="button" className="btn btn-secondary photo-upload-action" disabled={uploading} onClick={() => galleryRef.current?.click()}>
+          <span aria-hidden="true">▧</span>{uploading ? 'Uploading…' : 'Choose from phone'}
+        </button>
+        <button type="button" className="btn btn-secondary photo-upload-action" disabled={uploading} onClick={() => cameraRef.current?.click()}>
+          <span aria-hidden="true">●</span>Take photo
+        </button>
+      </div>
+      <div className="photo-upload-help">JPG, PNG or phone photos. You can select more than one image.</div>
+      <input ref={galleryRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={addFiles} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFiles} />
     </div>
   )
 }
@@ -308,54 +319,86 @@ export function PhotoGallery({ photos = [], compact = false }) {
   )
 }
 
+function warehouseForShipment(settings, shipmentType) {
+  const type = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'sea'
+  const legacy = {
+    name: settings.china_warehouse_name,
+    address: settings.china_warehouse_address,
+    phone: settings.china_warehouse_phone,
+  }
+
+  return {
+    name: settings[`china_${type}_warehouse_name`] || legacy.name,
+    address: settings[`china_${type}_warehouse_address`] || legacy.address,
+    phone: settings[`china_${type}_warehouse_phone`] || legacy.phone,
+    heading: type === 'air' ? 'Air Freight Receiving Address' : 'Sea Freight Receiving Address',
+  }
+}
+
+function maskPhone(phone = '') {
+  const value = String(phone || '').trim()
+  if (value.length <= 4) return value || 'Phone not supplied'
+
+  const digits = value.replace(/\D/g, '')
+  if (digits.length >= 7) {
+    const visibleStart = digits.slice(0, 3)
+    const visibleEnd = digits.slice(-3)
+    return `${visibleStart}${'*'.repeat(Math.max(3, digits.length - 6))}${visibleEnd}`
+  }
+
+  return `${value.slice(0, 2)}${'*'.repeat(Math.max(3, value.length - 4))}${value.slice(-2)}`
+}
+
 export function ShippingLabel({ client, settings = {}, shipmentType }) {
   if (!client) return null
   const method = shipmentType === 'air' || shipmentType === 'sea' ? shipmentType : 'general'
-  const payload = shippingLabelPayload(client, shipmentType)
+  const payload = `234:${client.shipping_mark || ''}:${method}`
   const warehouse = warehouseForShipment(settings, shipmentType)
   const displayPhone = maskPhone(client.phone)
-  const methodLabel = method === 'air' ? 'Air Freight' : method === 'sea' ? 'Sea Freight' : 'Freight'
-
   return (
     <div className="shipping-label">
-      <div className="shipping-label-top">
-        <div className="shipping-label-brand">
-          <img src="/234cargo-logo.svg" alt="234Cargo" />
-          <span>China to Nigeria Logistics</span>
+      {/* Brand header bar */}
+      <div style={{ background: 'var(--teal)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div style={{ width: 84, height: 30, borderRadius: 7, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 7px' }}>
+          <img src="/234cargo-logo.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
         </div>
-        <div className={`shipping-label-method shipping-method-${method}`}>{methodLabel}</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'Space Grotesk,sans-serif' }}>{settings.company_name || '234Cargo Logistics'}</div>
+          <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 9.5, letterSpacing: 0.3 }}>FREIGHT FORWARDING</div>
+        </div>
+        <Icons.box size={18} color="rgba(255,255,255,0.85)" />
       </div>
-
-      <div className="shipping-label-body">
-        <div className="shipping-label-hero">
-          <div className="shipping-label-mark">
-            <span>Shipping Mark</span>
-            <strong>{client.shipping_mark}</strong>
-            <small>Write or paste this exact mark on every carton.</small>
+      <div style={{ padding: 16 }}>
+        {method !== 'general' && <div className={`shipping-method-badge shipping-method-${method}`}>{method === 'air' ? 'AIR FREIGHT' : 'SEA FREIGHT'}</div>}
+        <div style={{ display: 'flex', gap: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Consignee</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--t1)', marginTop: 2 }}>{client.full_name}</div>
+            <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 1 }}>{client.state || client.country}</div>
+            <div style={{ fontSize: 12, color: 'var(--t2)' }}>{displayPhone}</div>
           </div>
-          <div className="shipping-label-qr">
-            <div><QRCode value={payload} size={84} fg="#0A1628" /></div>
-            <span>Scan Label</span>
-          </div>
-        </div>
-
-        <div className="shipping-label-details">
-          <div className="shipping-label-panel">
-            <span className="shipping-label-kicker">Client</span>
-            <strong>{client.full_name}</strong>
-            <small>{client.state || client.country || 'Nigeria'} - {displayPhone}</small>
-          </div>
-          <div className="shipping-label-panel shipping-label-panel-destination">
-            <span className="shipping-label-kicker">{warehouse.heading}</span>
-            <strong>{warehouse.name || 'Receiving warehouse details pending'}</strong>
-            {warehouse.address && <small>{warehouse.address}</small>}
-            {warehouse.phone && <small className="shipping-label-phone"><Icons.phone size={13} />{warehouse.phone}</small>}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ padding: 5, background: '#fff', border: '1px solid var(--line)', borderRadius: 8 }}>
+              <QRCode value={payload} size={84} fg="#0A1628" />
+            </div>
+            <div style={{ fontSize: 8.5, color: 'var(--t3)', marginTop: 4, letterSpacing: 0.4 }}>SCAN TO TRACK</div>
+            <div style={{ fontSize: 8.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 700 }}>{client.shipping_mark}</div>
           </div>
         </div>
-
+        {shipmentType && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><TypePill type={shipmentType} /></div>}
+        <div className="shipping-label-mark">
+          <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>Shipping Mark</div>
+          <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 4, color: '#fff', fontFamily: 'Space Grotesk,sans-serif', marginTop: 3 }}>{client.shipping_mark}</div>
+        </div>
         <div className="shipping-label-warning">
-          <strong>Important</strong>
-          <span>Goods without this shipping mark may be delayed, mixed up, or impossible to identify.</span>
+          <strong>重要提醒</strong>
+          <span>请务必将此唛头标签贴在每一个包裹上。</span>
+        </div>
+        <div style={{ borderTop: '1px dashed var(--line2)', marginTop: 14, paddingTop: 12 }}>
+          <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 4 }}>{warehouse.heading}</div>
+          <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--t1)' }}>{warehouse.name || 'Receiving warehouse details pending'}</div>
+          {warehouse.address && <div style={{ fontSize: 11.5, color: 'var(--t2)', marginTop: 1 }}>{warehouse.address}</div>}
+          {warehouse.phone && <div style={{ fontSize: 11.5, color: 'var(--teal-d)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Icons.phone size={12} color="var(--teal-d)" />{warehouse.phone}</div>}
         </div>
       </div>
     </div>
@@ -364,7 +407,12 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
 
 export function ReceiptView({ receipt, client, companyName = '234Cargo' }) {
   if (!receipt) return null
-  const items = typeof receipt.items === 'string' ? JSON.parse(receipt.items) : (receipt.items || [])
+  let items = []
+  try {
+    const parsed = typeof receipt.items === 'string' ? JSON.parse(receipt.items || '[]') : receipt.items
+    items = Array.isArray(parsed) ? parsed : []
+  } catch { items = [] }
+  if (!items.length) items = [{ desc: receipt.goods?.description || 'Shipping service', qty: 1, unit_price: receipt.subtotal || receipt.total || 0 }]
   const currency = receipt.currency || 'NGN'
   return (
     <div className="receipt-document">
@@ -393,11 +441,15 @@ export function ReceiptView({ receipt, client, companyName = '234Cargo' }) {
       </div>
       <table className="receipt-items-table">
         <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
-        <tbody>{items.map((item, i) => (
+        <tbody>{items.map((item, i) => {
+          const quantity = Number(item.qty ?? item.quantity ?? 1) || 1
+          const rate = Number(item.unit_price ?? item.rate ?? 0) || 0
+          const amount = Number(item.amount ?? quantity * rate) || 0
+          return (
           <tr key={i}>
-            <td>{item.desc}</td><td>{item.qty || 1}</td><td>{formatMoney(item.unit_price, currency)}</td><td>{formatMoney((item.qty || 1) * item.unit_price, currency)}</td>
+            <td>{item.desc || item.description || 'Shipping service'}</td><td>{quantity}</td><td>{formatMoney(rate, currency)}</td><td>{formatMoney(amount, currency)}</td>
           </tr>
-        ))}</tbody>
+        )})}</tbody>
       </table>
       <div className="receipt-summary">
         {receipt.discount > 0 && <div><span>Discount</span><strong>- {formatMoney(receipt.discount, currency)}</strong></div>}
