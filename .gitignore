@@ -7,3 +7,4 @@ dist
 tools/supabase-cli/
 supabase-cli-windows-x64.tgz
 supabase/.temp/
+.netlify/
