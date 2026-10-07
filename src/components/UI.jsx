@@ -51,7 +51,7 @@ export function Avatar({ name = '', size = 36, style = {} }) {
   )
 }
 
-export function Modal({ open, title, onClose, children }) {
+export function Modal({ open, title, onClose, children, className = '' }) {
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -59,7 +59,7 @@ export function Modal({ open, title, onClose, children }) {
   if (!open) return null
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-sheet">
+      <div className={`modal-sheet ${className}`.trim()}>
         <div className="modal-handle" />
         <div className="modal-header">
           <span className="modal-title">{title}</span>

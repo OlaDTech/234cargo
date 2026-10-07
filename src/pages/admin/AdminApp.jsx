@@ -42,6 +42,19 @@ const receiptItems = receipt => {
   catch { return [] }
 }
 
+const receiptGoodsIds = receipt => {
+  const itemIds = receiptItems(receipt).map(item => item.goods_id).filter(Boolean)
+  return [...new Set([receipt?.goods_id, ...itemIds].filter(Boolean))]
+}
+
+const receiptLineForGoods = goodsRecord => ({
+  goods_id: goodsRecord.id,
+  desc: goodsRecord.description || 'Freight charge',
+  qty: '1',
+  unit_price: '',
+  kind: 'shipping',
+})
+
 const receiptCostBreakdown = receipt => {
   const items = receiptItems(receipt)
   const shippingItems = items.filter(item => item.kind === 'shipping')
@@ -127,7 +140,7 @@ export default function AdminApp() {
   const [uploadingSupplierPhotos, setUploadingSupplierPhotos] = useState(false)
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou -> Lagos', status: 'loading', departure_date: '', arrival_date: '' })
   const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
-  const [receiptForm, setReceiptForm] = useState({ discount: 0 })
+  const [receiptForm, setReceiptForm] = useState({ client_id: '', goods_ids: [], items: [], discount: '0', currency: 'NGN' })
   const [generatingReceipt, setGeneratingReceipt] = useState(false)
   const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
@@ -240,32 +253,77 @@ export default function AdminApp() {
     } catch { toast.error('Failed to save settings') }
   }
 
+  const openReceiptBuilder = goodsRecord => {
+    setReceiptForm({
+      client_id: goodsRecord.client_id,
+      goods_ids: [goodsRecord.id],
+      items: [receiptLineForGoods(goodsRecord)],
+      discount: '0',
+      currency: 'NGN',
+    })
+    setShowReceiptGen({ client_id: goodsRecord.client_id })
+  }
+
+  const toggleReceiptGoods = goodsRecord => {
+    setReceiptForm(form => {
+      const selected = form.goods_ids.includes(goodsRecord.id)
+      return {
+        ...form,
+        goods_ids: selected ? form.goods_ids.filter(id => id !== goodsRecord.id) : [...form.goods_ids, goodsRecord.id],
+        items: selected
+          ? form.items.filter(item => item.goods_id !== goodsRecord.id)
+          : [...form.items, receiptLineForGoods(goodsRecord)],
+      }
+    })
+  }
+
+  const updateReceiptItem = (index, field, value) => {
+    setReceiptForm(form => ({ ...form, items: form.items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) }))
+  }
+
+  const addReceiptCharge = () => {
+    setReceiptForm(form => ({ ...form, items: [...form.items, { desc: '', qty: '1', unit_price: '', kind: 'other' }] }))
+  }
+
+  const removeReceiptItem = index => {
+    setReceiptForm(form => ({ ...form, items: form.items.filter((_, itemIndex) => itemIndex !== index) }))
+  }
+
+  const closeReceiptBuilder = (force = false) => {
+    if (generatingReceipt && !force) return
+    setShowReceiptGen(null)
+    setReceiptForm({ client_id: '', goods_ids: [], items: [], discount: '0', currency: 'NGN' })
+  }
+
   const generateReceipt = async () => {
     if (!showReceiptGen || generatingReceipt) return
-    const g = goods.find(x => x.id === showReceiptGen.goods_id)
-    if (!g) { toast.error('The goods record for this receipt could not be found.'); return }
-    const ratesCbm = parseFloat(settings.sea_rate_cbm || 150000)
-    const ratesKg = g.type === 'air' ? parseFloat(settings.air_rate_kg || 18000) : parseFloat(settings.sea_rate_kg || 1200)
-    const items = g.type === 'sea'
-      ? [{ desc: 'Sea Freight (CBM)', qty: parseFloat(g.cbm) || 0, unit_price: ratesCbm }, { desc: 'Weight Surcharge', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
-      : [{ desc: 'Air Freight (kg)', qty: parseFloat(g.weight_kg) || 0, unit_price: ratesKg }]
-    const billableItems = items.filter(item => item.qty > 0 && item.unit_price >= 0)
+    const selectedGoods = goods.filter(item => receiptForm.goods_ids.includes(item.id) && item.client_id === receiptForm.client_id)
+    if (!receiptForm.client_id || !selectedGoods.length) { toast.error('Select at least one goods record for this receipt.'); return }
+    if (!receiptForm.items.length) { toast.error('Add at least one receipt charge.'); return }
+    const invalidItem = receiptForm.items.find(item => !item.desc?.trim() || !(parseFloat(item.qty) > 0) || parseFloat(item.unit_price) < 0 || item.unit_price === '')
+    if (invalidItem) { toast.error('Complete the description, quantity and price for every receipt item.'); return }
+    const billableItems = receiptForm.items.map(item => ({
+      ...item,
+      desc: item.desc.trim(),
+      qty: parseFloat(item.qty),
+      unit_price: parseFloat(item.unit_price),
+      amount: parseFloat(item.qty) * parseFloat(item.unit_price),
+    }))
     const subtotal = billableItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
     const discount = Math.max(0, parseFloat(receiptForm.discount) || 0)
-    if (subtotal <= 0) { toast.error('Add a billable CBM or weight before generating the receipt.'); return }
+    if (subtotal <= 0) { toast.error('Enter a price greater than zero before generating the receipt.'); return }
     if (discount > subtotal) { toast.error('Discount cannot be greater than the receipt subtotal.'); return }
 
     setGeneratingReceipt(true)
     try {
-      const existing = receipts.find(receipt => receipt.goods_id === g.id && receipt.status !== 'cancelled')
-      if (existing && !window.confirm(`Receipt ${existing.receipt_no} already exists for these goods. Generate another receipt anyway?`)) return
+      const existing = receipts.find(receipt => receipt.status !== 'cancelled' && receiptGoodsIds(receipt).some(id => receiptForm.goods_ids.includes(id)))
+      if (existing && !window.confirm(`Receipt ${existing.receipt_no} already includes one of the selected goods. Generate another receipt anyway?`)) return
       const { data: recNo, error: numberError } = await supabase.rpc('generate_receipt_no')
       if (numberError || !recNo) throw numberError || new Error('Could not generate a receipt number.')
-      const { data: created, error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: showReceiptGen.client_id, goods_id: g.id, items: billableItems, subtotal, discount, total: subtotal - discount, currency: 'NGN', issued_by: profile?.id }).select('*, client:clients(full_name, phone, shipping_mark), goods:goods(description, type)').single()
+      const { data: created, error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: receiptForm.client_id, goods_id: selectedGoods[0].id, items: billableItems, subtotal, discount, total: subtotal - discount, currency: receiptForm.currency, issued_by: profile?.id }).select('*, client:clients(full_name, phone, shipping_mark), goods:goods(description, type)').single()
       if (error) throw error
       toast.success('Receipt ' + recNo + ' generated!')
-      setShowReceiptGen(null)
-      setReceiptForm({ discount: 0 })
+      closeReceiptBuilder(true)
       setShowReceiptView(created)
       loadAll()
     } catch (error) {
@@ -350,7 +408,7 @@ export default function AdminApp() {
 
   const deleteGoodsRecord = async goodsRecord => {
     if (!goodsRecord) return
-    const linkedReceipts = receipts.filter(receipt => receipt.goods_id === goodsRecord.id)
+    const linkedReceipts = receipts.filter(receipt => receiptGoodsIds(receipt).includes(goodsRecord.id))
     const blockedReceipt = linkedReceipts.find(receipt => receipt.status !== 'unpaid' || receiptWasWalletPaid(receipt))
     if (blockedReceipt) {
       toast.error(`Receipt ${blockedReceipt.receipt_no} is paid, so this goods record cannot be deleted. Record a correction/refund instead.`)
@@ -959,6 +1017,10 @@ export default function AdminApp() {
   const totalExpenses = Number(stats.totalExpenses) || 0
   const unpaidReceipts = receipts.filter(receipt => receipt.status === 'unpaid').reduce((sum, receipt) => sum + (parseFloat(receipt.total) || 0), 0)
   const cashTotal = Math.max(1, paidIncome + totalExpenses + unpaidReceipts)
+  const receiptClient = clients.find(client => client.id === receiptForm.client_id)
+  const receiptClientGoods = goods.filter(item => item.client_id === receiptForm.client_id)
+  const receiptSubtotal = receiptForm.items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0), 0)
+  const receiptTotal = Math.max(0, receiptSubtotal - (parseFloat(receiptForm.discount) || 0))
   const walletNgnTotal = walletAccounts.filter(account => account.currency === 'NGN').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
   const walletRmbTotal = walletAccounts.filter(account => account.currency === 'RMB').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
   const pendingWalletTopUps = walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length
@@ -1124,7 +1186,7 @@ export default function AdminApp() {
               </div>
             </div>
             {loading ? <SkeletonList /> : filteredGoods.map(g => {
-              const hasReceipt = receipts.find(r => r.goods_id === g.id)
+              const hasReceipt = receipts.find(r => receiptGoodsIds(r).includes(g.id))
               const assignLabel = loadAssignmentLabel(g)
               const compatibleLoads = compatibleLoadsForGoods(containers, g)
               return (
@@ -1174,7 +1236,7 @@ export default function AdminApp() {
                     <button onClick={() => openGoodsEdit(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
                     <button onClick={() => deleteGoodsRecord(g)} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
                     {!hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
-                      <button onClick={() => setShowReceiptGen({ goods_id: g.id, client_id: g.client_id, goods: g })} className="btn btn-sm btn-secondary">Generate Receipt</button>
+                      <button onClick={() => openReceiptBuilder(g)} className="btn btn-sm btn-secondary">Generate Receipt</button>
                     ) : hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
                       <button onClick={() => setShowReceiptView(hasReceipt)} className="btn btn-sm btn-ghost">View Receipt</button>
                     ) : null}
@@ -1826,26 +1888,45 @@ export default function AdminApp() {
       </Modal>
 
       {/* Receipt generate */}
-      <Modal open={!!showReceiptGen} title="Generate Receipt" onClose={() => setShowReceiptGen(null)}>
+      <Modal open={!!showReceiptGen} title="Create Combined Receipt" onClose={closeReceiptBuilder} className="receipt-builder-modal">
         {showReceiptGen && (
-          <>
-            <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Client</div>
-              <div style={{ fontWeight: 600 }}>{clients.find(c=>c.id===showReceiptGen.client_id)?.full_name}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Goods</div>
-              <div style={{ fontWeight: 600 }}>{showReceiptGen.goods?.description}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
-                {showReceiptGen.goods?.type === 'sea'
-                  ? `Rate: ₦${settings.sea_rate_cbm}/CBM + ₦${settings.sea_rate_kg}/kg`
-                  : `Rate: ₦${settings.air_rate_kg}/kg`}
+          <div className="receipt-builder">
+            <div className="receipt-builder-client">
+              <div><span>Client</span><strong>{receiptClient?.full_name}</strong><small>{receiptClient?.shipping_mark}</small></div>
+              <div className="input-group receipt-currency"><label className="input-label">Currency</label><select className="input-field" value={receiptForm.currency} onChange={event => setReceiptForm(form => ({ ...form, currency: event.target.value }))}><option>NGN</option><option>RMB</option><option>USD</option><option>GBP</option><option>EUR</option><option>XOF</option><option>GHS</option></select></div>
+            </div>
+            <section className="receipt-builder-section">
+              <div className="receipt-builder-heading"><div><strong>1. Select goods</strong><span>Combine any goods belonging to this client.</span></div><span>{receiptForm.goods_ids.length} selected</span></div>
+              <div className="receipt-goods-list">
+                {receiptClientGoods.map(item => {
+                  const selected = receiptForm.goods_ids.includes(item.id)
+                  return <label key={item.id} className={`receipt-goods-option${selected ? ' is-selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => toggleReceiptGoods(item)} /><div><strong>{item.description}</strong><span>{item.tracking_no || 'No tracking number'} · {item.type === 'air' ? `${item.weight_kg || 0} kg` : `${item.cbm || 0} CBM`}</span></div></label>
+                })}
+                {!receiptClientGoods.length && <div className="receipt-builder-empty">No goods found for this client.</div>}
               </div>
+            </section>
+            <section className="receipt-builder-section">
+              <div className="receipt-builder-heading"><div><strong>2. Enter charges</strong><span>Prices are never filled automatically.</span></div><button type="button" className="btn btn-xs btn-secondary" onClick={addReceiptCharge}>+ Add charge</button></div>
+              <div className="receipt-line-list">
+                {receiptForm.items.map((item, index) => (
+                  <div className="receipt-line" key={`${item.goods_id || 'charge'}-${index}`}>
+                    <div className="receipt-line-description"><label className="input-label">Description</label><input className="input-field" value={item.desc} onChange={event => updateReceiptItem(index, 'desc', event.target.value)} placeholder="Freight, clearance or handling" /></div>
+                    <div><label className="input-label">Qty</label><input className="input-field" type="number" min="0.01" step="0.01" value={item.qty} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} /></div>
+                    <div><label className="input-label">Unit price</label><input className="input-field" type="number" min="0" step="0.01" value={item.unit_price} onChange={event => updateReceiptItem(index, 'unit_price', event.target.value)} placeholder="0.00" /></div>
+                    <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
+                    <button type="button" className="receipt-line-remove" onClick={() => removeReceiptItem(index)} aria-label={`Remove ${item.desc || 'charge'}`}><Trash2 size={15} /></button>
+                  </div>
+                ))}
+                {!receiptForm.items.length && <div className="receipt-builder-empty">Select goods or add a custom charge.</div>}
+              </div>
+            </section>
+            <div className="receipt-builder-summary">
+              <div className="input-group"><label className="input-label">Discount ({receiptForm.currency})</label><input className="input-field" type="number" min="0" step="0.01" placeholder="0.00" value={receiptForm.discount} onChange={event => setReceiptForm(form => ({ ...form, discount: event.target.value }))} /></div>
+              <div><span>Subtotal</span><strong>{formatMoney(receiptSubtotal, receiptForm.currency)}</strong></div>
+              <div className="receipt-builder-total"><span>Total</span><strong>{formatMoney(receiptTotal, receiptForm.currency)}</strong></div>
             </div>
-            <div className="input-group">
-              <label className="input-label">Discount (₦)</label>
-              <input className="input-field" type="number" min="0" step="0.01" placeholder="0.00" value={receiptForm.discount} onChange={e => setReceiptForm(p=>({...p, discount: e.target.value}))} />
-            </div>
-            <button className="btn btn-primary btn-full" disabled={generatingReceipt} onClick={generateReceipt} style={{ padding: 13 }}>{generatingReceipt ? 'Generating Receipt…' : 'Generate & Issue Receipt'}</button>
-          </>
+            <button className="btn btn-primary btn-full" disabled={generatingReceipt || !receiptForm.goods_ids.length || !receiptForm.items.length} onClick={generateReceipt} style={{ padding: 13 }}>{generatingReceipt ? 'Generating Receipt…' : `Generate Receipt for ${receiptForm.goods_ids.length} ${receiptForm.goods_ids.length === 1 ? 'Goods Item' : 'Goods Items'}`}</button>
+          </div>
         )}
       </Modal>
 
