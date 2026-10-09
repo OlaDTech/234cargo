@@ -57,6 +57,7 @@ const receiptLineForGoods = (goodsRecord, load) => {
     container_no: load?.container_no || 'Unassigned',
     desc: goodsRecord.description || 'Freight charge',
     qty: String(quantity),
+    recorded_quantity: quantity,
     measurement: totalMeasurement ? String(totalMeasurement / quantity) : '',
     measurement_unit: goodsRecord.type === 'sea' ? 'CBM' : 'kg',
     unit_price: '',
@@ -337,14 +338,21 @@ export default function AdminApp() {
     if (!receiptForm.items.length) { toast.error('Add at least one receipt charge.'); return }
     const invalidItem = receiptForm.items.find(item => !item.desc?.trim() || !(parseFloat(item.qty) > 0) || !(parseFloat(item.measurement) > 0) || parseFloat(item.unit_price) < 0 || item.unit_price === '')
     if (invalidItem) { toast.error('Complete the description, quantity, CBM or weight, and unit price for every receipt item.'); return }
-    const billableItems = receiptForm.items.map(item => ({
-      ...item,
-      desc: item.desc.trim(),
-      qty: parseFloat(item.qty),
-      measurement: parseFloat(item.measurement),
-      unit_price: parseFloat(item.unit_price),
-      amount: parseFloat(item.qty) * parseFloat(item.measurement) * parseFloat(item.unit_price),
-    }))
+    const billableItems = receiptForm.items.map(item => {
+      const recordedGoods = item.goods_id ? selectedGoods.find(goodsRecord => goodsRecord.id === item.goods_id) : null
+      const quantity = recordedGoods ? goodsQuantity(recordedGoods) : parseFloat(item.qty)
+      const measurement = parseFloat(item.measurement)
+      const unitPrice = parseFloat(item.unit_price)
+      return {
+        ...item,
+        desc: item.desc.trim(),
+        qty: quantity,
+        recorded_quantity: recordedGoods ? quantity : item.recorded_quantity,
+        measurement,
+        unit_price: unitPrice,
+        amount: quantity * measurement * unitPrice,
+      }
+    })
     const subtotal = billableItems.reduce((sum, item) => sum + item.amount, 0)
     const discount = Math.max(0, parseFloat(receiptForm.discount) || 0)
     if (subtotal <= 0) { toast.error('Enter a price greater than zero before generating the receipt.'); return }
@@ -1977,7 +1985,7 @@ export default function AdminApp() {
               <div className="receipt-goods-list">
                 {receiptClientGoods.map(item => {
                   const selected = receiptForm.goods_ids.includes(item.id)
-                  return <label key={item.id} className={`receipt-goods-option${selected ? ' is-selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => toggleReceiptGoods(item)} /><div><strong>{item.description}</strong><span>{item.tracking_no || 'No tracking number'} · {item.type === 'air' ? `${item.weight_kg || 0} kg` : `${item.cbm || 0} CBM`}</span></div></label>
+                  return <label key={item.id} className={`receipt-goods-option${selected ? ' is-selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => toggleReceiptGoods(item)} /><div><strong>{item.description}</strong><span>{item.tracking_no || 'No tracking number'} · Qty {goodsQuantity(item)} · {item.type === 'air' ? `${item.weight_kg || 0} kg` : `${item.cbm || 0} CBM`}</span></div></label>
                 })}
                 {!receiptClientGoods.length && <div className="receipt-builder-empty">No goods found for this client.</div>}
               </div>
@@ -1988,7 +1996,7 @@ export default function AdminApp() {
                 {receiptForm.items.map((item, index) => (
                   <div className="receipt-line" key={`${item.goods_id || 'charge'}-${index}`}>
                     <div className="receipt-line-description"><label className="input-label">Description</label><input className="input-field" value={item.desc} onChange={event => updateReceiptItem(index, 'desc', event.target.value)} placeholder="Freight, clearance or handling" /></div>
-                    <div><label className="input-label">Packages</label><input className="input-field" type="number" min="1" step="1" value={item.qty} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} /></div>
+                    <div><label className="input-label">Recorded quantity</label><input className="input-field" type="number" min="1" step="1" value={item.goods_id ? item.recorded_quantity ?? item.qty : item.qty} readOnly={!!item.goods_id} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} title={item.goods_id ? 'This quantity comes from the recorded goods' : 'Enter the quantity'} /></div>
                     <div><label className="input-label">{item.measurement_unit === 'kg' ? 'kg / package' : item.measurement_unit === 'CBM' ? 'CBM / package' : 'Units'}</label><input className="input-field" type="number" min="0.0001" step="0.0001" value={item.measurement} onChange={event => updateReceiptItem(index, 'measurement', event.target.value)} /></div>
                     <div><label className="input-label">Unit price</label><input className="input-field" type="number" min="0" step="0.01" value={item.unit_price} onChange={event => updateReceiptItem(index, 'unit_price', event.target.value)} placeholder="0.00" /></div>
                     <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.qty) || 0) * (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
