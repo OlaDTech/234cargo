@@ -349,9 +349,27 @@ export default function AdminApp() {
       if (existing && !window.confirm(`Receipt ${existing.receipt_no} already includes one of the selected goods. Generate another receipt anyway?`)) return
       const { data: recNo, error: numberError } = await supabase.rpc('generate_receipt_no')
       if (numberError || !recNo) throw numberError || new Error('Could not generate a receipt number.')
-      const { data: created, error } = await supabase.from('receipts').insert({ receipt_no: recNo, client_id: receiptForm.client_id, goods_id: selectedGoods[0].id, items: billableItems, subtotal, discount, total: subtotal - discount, currency: receiptForm.currency, issued_by: profile?.id }).select('*, client:clients(full_name, phone, shipping_mark), goods:goods(description, type)').single()
-      if (error) throw error
-      toast.success('Receipt ' + recNo + ' generated!')
+      const receiptPayload = { client_id: receiptForm.client_id, goods_id: selectedGoods[0].id, items: billableItems, subtotal, discount, total: subtotal - discount, currency: receiptForm.currency, issued_by: profile?.id }
+      const insertReceipt = receiptNo => supabase.from('receipts').insert({ ...receiptPayload, receipt_no: receiptNo }).select('*, client:clients(full_name, phone, shipping_mark), goods:goods(description, type)').single()
+      let finalReceiptNo = recNo
+      let result = await insertReceipt(finalReceiptNo)
+      if (result.error?.code === '23505' && String(result.error.message || '').includes('receipt_no')) {
+        const yearPrefix = `REC-${new Date().getFullYear()}-`
+        const { data: existingNumbers, error: lookupError } = await supabase.from('receipts').select('receipt_no').like('receipt_no', `${yearPrefix}%`)
+        if (lookupError) throw lookupError
+        const highest = (existingNumbers || []).reduce((max, row) => {
+          const sequence = Number.parseInt(String(row.receipt_no || '').slice(yearPrefix.length), 10)
+          return Number.isFinite(sequence) ? Math.max(max, sequence) : max
+        }, 0)
+        for (let attempt = 1; attempt <= 5 && result.error; attempt += 1) {
+          finalReceiptNo = `${yearPrefix}${String(highest + attempt).padStart(4, '0')}`
+          result = await insertReceipt(finalReceiptNo)
+          if (result.error && result.error.code !== '23505') break
+        }
+      }
+      if (result.error) throw result.error
+      const created = result.data
+      toast.success('Receipt ' + finalReceiptNo + ' generated!')
       closeReceiptBuilder(true)
       setShowReceiptView(created)
       loadAll()

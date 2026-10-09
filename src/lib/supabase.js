@@ -433,13 +433,23 @@ export async function getReceipts(clientId) {
 
 export async function createReceipt(payload) {
   const { data: recNo } = await supabase.rpc('generate_receipt_no')
-  const { data, error } = await supabase
-    .from('receipts')
-    .insert({ ...payload, receipt_no: recNo })
-    .select()
-    .single()
-  if (error) throw error
-  return data
+  const insertReceipt = receiptNo => supabase.from('receipts').insert({ ...payload, receipt_no: receiptNo }).select().single()
+  let result = await insertReceipt(recNo)
+  if (result.error?.code === '23505' && String(result.error.message || '').includes('receipt_no')) {
+    const yearPrefix = `REC-${new Date().getFullYear()}-`
+    const { data: rows, error: lookupError } = await supabase.from('receipts').select('receipt_no').like('receipt_no', `${yearPrefix}%`)
+    if (lookupError) throw lookupError
+    const highest = (rows || []).reduce((max, row) => {
+      const sequence = Number.parseInt(String(row.receipt_no || '').slice(yearPrefix.length), 10)
+      return Number.isFinite(sequence) ? Math.max(max, sequence) : max
+    }, 0)
+    for (let attempt = 1; attempt <= 5 && result.error; attempt += 1) {
+      result = await insertReceipt(`${yearPrefix}${String(highest + attempt).padStart(4, '0')}`)
+      if (result.error && result.error.code !== '23505') break
+    }
+  }
+  if (result.error) throw result.error
+  return result.data
 }
 
 export async function updateReceiptStatus(id, status) {

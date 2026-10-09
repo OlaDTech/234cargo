@@ -1047,13 +1047,34 @@ begin
 end;
 $$;
 
--- Auto-generate receipt number
+-- Auto-generate receipt numbers from an atomic sequence. Using count(*) + 1
+-- caused duplicate numbers after deletions and during concurrent inserts.
+create sequence if not exists public.receipt_no_seq;
+
+do $$
+declare
+  highest_existing bigint;
+  sequence_value bigint;
+  sequence_called boolean;
+begin
+  select coalesce(max((regexp_match(receipt_no, '([0-9]+)$'))[1]::bigint), 0)
+  into highest_existing
+  from receipts
+  where receipt_no ~ '^REC-[0-9]{4}-[0-9]+$';
+
+  select last_value, is_called into sequence_value, sequence_called from public.receipt_no_seq;
+  if highest_existing > 0 and (not sequence_called or highest_existing >= sequence_value) then
+    perform setval('public.receipt_no_seq', highest_existing, true);
+  end if;
+end;
+$$;
+
 create or replace function generate_receipt_no()
 returns text language plpgsql as $$
 declare
-  seq int;
+  seq bigint;
 begin
-  select count(*) + 1 into seq from receipts;
+  seq := nextval('public.receipt_no_seq');
   return 'REC-' || to_char(now(), 'YYYY') || '-' || lpad(seq::text, 4, '0');
 end;
 $$;
