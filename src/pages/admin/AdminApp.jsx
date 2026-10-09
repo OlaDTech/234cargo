@@ -2017,7 +2017,7 @@ export default function AdminApp() {
       </Modal>
 
       {/* Receipt view */}
-      <Modal open={!!showReceiptView} title="Receipt" onClose={() => setShowReceiptView(null)}>
+      <Modal open={!!showReceiptView} title="Receipt" onClose={() => setShowReceiptView(null)} className="receipt-preview-modal">
         <ReceiptView receipt={showReceiptView} client={clients.find(c=>c.id===showReceiptView?.client_id)} companyName={settings.company_name || '234Cargo'} />
         <button onClick={() => downloadReceiptPdf({ receipt: showReceiptView, client: clients.find(c=>c.id===showReceiptView?.client_id), companyName: settings.company_name || '234Cargo Logistics' })} className="btn btn-primary btn-full" style={{ marginTop: 12 }}><Download size={16} />Download PDF Receipt</button>
         <button onClick={() => window.print()} className="btn btn-secondary btn-full" style={{ marginTop: 8 }}>Print A4 Receipt</button>
