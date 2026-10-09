@@ -86,7 +86,8 @@ export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Lo
 
   const rows = items.length ? items : [{ desc: 'Shipping service', qty: 1, unit_price: receipt.subtotal || receipt.total || 0 }]
   rows.forEach(item => {
-    const descriptionLines = wrapText(item.desc || item.description || 'Shipping service', 46)
+    const label = item.container_no ? `${item.desc || item.description || 'Shipping service'} [Container / batch: ${item.container_no}]` : (item.desc || item.description || 'Shipping service')
+    const descriptionLines = wrapText(label, 46)
     descriptionLines.forEach((description, index) => {
       text(56, y, 9, description)
       if (index === 0) {

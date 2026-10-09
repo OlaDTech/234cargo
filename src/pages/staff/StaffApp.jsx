@@ -40,7 +40,10 @@ export default function StaffApp() {
 
     const channel = supabase.channel('staff-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, payload => {
+        if (payload.eventType === 'INSERT') toast(`Goods recorded: ${payload.new?.description || 'New warehouse item'}`, { icon: '📦', duration: 5000 })
+        scheduleReload()
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {

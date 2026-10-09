@@ -445,7 +445,7 @@ export function ReceiptView({ receipt, client, companyName = '234Cargo' }) {
           const amount = Number(item.amount ?? quantity * rate) || 0
           return (
           <tr key={i}>
-            <td>{item.desc || item.description || 'Shipping service'}</td><td>{quantity}</td><td>{formatMoney(rate, currency)}</td><td>{formatMoney(amount, currency)}</td>
+            <td><strong>{item.desc || item.description || 'Shipping service'}</strong>{item.container_no && <small className="receipt-item-container">Container / batch: {item.container_no}</small>}</td><td>{quantity}</td><td>{formatMoney(rate, currency)}</td><td>{formatMoney(amount, currency)}</td>
           </tr>
         )})}</tbody>
       </table>

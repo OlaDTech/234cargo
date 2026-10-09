@@ -48,8 +48,10 @@ const receiptGoodsIds = receipt => {
   return [...new Set([receipt?.goods_id, ...itemIds].filter(Boolean))]
 }
 
-const receiptLineForGoods = goodsRecord => ({
+const receiptLineForGoods = (goodsRecord, load) => ({
   goods_id: goodsRecord.id,
+  container_id: goodsRecord.container_id || null,
+  container_no: load?.container_no || 'Unassigned',
   desc: goodsRecord.description || 'Freight charge',
   qty: '1',
   unit_price: '',
@@ -141,7 +143,7 @@ export default function AdminApp() {
   const [uploadingSupplierPhotos, setUploadingSupplierPhotos] = useState(false)
   const [newCont, setNewCont] = useState({ container_no: '', type: '20ft', route: 'Guangzhou -> Lagos', status: 'loading', departure_date: '', arrival_date: '' })
   const [clientForm, setClientForm] = useState({ full_name: '', phone: '', country: NIGERIA_COUNTRY, state: DEFAULT_NIGERIA_STATE, password_hash: '', notes: '' })
-  const [receiptForm, setReceiptForm] = useState({ client_id: '', goods_ids: [], items: [], discount: '0', currency: 'NGN' })
+  const [receiptForm, setReceiptForm] = useState({ client_id: '', container_id: '', goods_ids: [], items: [], discount: '0', currency: 'NGN' })
   const [generatingReceipt, setGeneratingReceipt] = useState(false)
   const [receiptEditForm, setReceiptEditForm] = useState({ subtotal: '', discount: '', status: 'unpaid' })
   const [settingsForm, setSettingsForm] = useState({})
@@ -172,7 +174,10 @@ export default function AdminApp() {
 
     const channel = supabase.channel('admin-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, payload => {
+        if (payload.eventType === 'INSERT') toast(`Goods recorded: ${payload.new?.description || 'New warehouse item'}`, { icon: '📦', duration: 5000 })
+        scheduleReload()
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, scheduleReload)
@@ -260,14 +265,29 @@ export default function AdminApp() {
   }
 
   const openReceiptBuilder = goodsRecord => {
+    const containerId = goodsRecord.container_id || 'unassigned'
+    const load = containers.find(item => item.id === goodsRecord.container_id)
+    const groupedGoods = goods.filter(item => item.client_id === goodsRecord.client_id && (item.container_id || 'unassigned') === containerId)
     setReceiptForm({
       client_id: goodsRecord.client_id,
-      goods_ids: [goodsRecord.id],
-      items: [receiptLineForGoods(goodsRecord)],
+      container_id: containerId,
+      goods_ids: groupedGoods.map(item => item.id),
+      items: groupedGoods.map(item => receiptLineForGoods(item, load)),
       discount: '0',
       currency: 'NGN',
     })
     setShowReceiptGen({ client_id: goodsRecord.client_id })
+  }
+
+  const selectReceiptContainer = containerId => {
+    const load = containers.find(item => item.id === containerId)
+    const groupedGoods = goods.filter(item => item.client_id === receiptForm.client_id && (item.container_id || 'unassigned') === containerId)
+    setReceiptForm(form => ({
+      ...form,
+      container_id: containerId,
+      goods_ids: groupedGoods.map(item => item.id),
+      items: groupedGoods.map(item => receiptLineForGoods(item, load)),
+    }))
   }
 
   const toggleReceiptGoods = goodsRecord => {
@@ -278,7 +298,7 @@ export default function AdminApp() {
         goods_ids: selected ? form.goods_ids.filter(id => id !== goodsRecord.id) : [...form.goods_ids, goodsRecord.id],
         items: selected
           ? form.items.filter(item => item.goods_id !== goodsRecord.id)
-          : [...form.items, receiptLineForGoods(goodsRecord)],
+          : [...form.items, receiptLineForGoods(goodsRecord, containers.find(item => item.id === goodsRecord.container_id))],
       }
     })
   }
@@ -288,7 +308,10 @@ export default function AdminApp() {
   }
 
   const addReceiptCharge = () => {
-    setReceiptForm(form => ({ ...form, items: [...form.items, { desc: '', qty: '1', unit_price: '', kind: 'other' }] }))
+    setReceiptForm(form => {
+      const load = containers.find(item => item.id === form.container_id)
+      return { ...form, items: [...form.items, { desc: '', qty: '1', unit_price: '', kind: 'other', container_id: load?.id || null, container_no: load?.container_no || 'Unassigned' }] }
+    })
   }
 
   const removeReceiptItem = index => {
@@ -298,7 +321,7 @@ export default function AdminApp() {
   const closeReceiptBuilder = (force = false) => {
     if (generatingReceipt && !force) return
     setShowReceiptGen(null)
-    setReceiptForm({ client_id: '', goods_ids: [], items: [], discount: '0', currency: 'NGN' })
+    setReceiptForm({ client_id: '', container_id: '', goods_ids: [], items: [], discount: '0', currency: 'NGN' })
   }
 
   const generateReceipt = async () => {
@@ -1034,7 +1057,9 @@ export default function AdminApp() {
   const unpaidReceipts = receipts.filter(receipt => receipt.status === 'unpaid').reduce((sum, receipt) => sum + (parseFloat(receipt.total) || 0), 0)
   const cashTotal = Math.max(1, paidIncome + totalExpenses + unpaidReceipts)
   const receiptClient = clients.find(client => client.id === receiptForm.client_id)
-  const receiptClientGoods = goods.filter(item => item.client_id === receiptForm.client_id)
+  const receiptContainerOptions = [...new Set(goods.filter(item => item.client_id === receiptForm.client_id).map(item => item.container_id || 'unassigned'))]
+  const receiptClientGoods = goods.filter(item => item.client_id === receiptForm.client_id && (item.container_id || 'unassigned') === receiptForm.container_id)
+  const receiptContainer = containers.find(item => item.id === receiptForm.container_id)
   const receiptSubtotal = receiptForm.items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0), 0)
   const receiptTotal = Math.max(0, receiptSubtotal - (parseFloat(receiptForm.discount) || 0))
   const walletNgnTotal = walletAccounts.filter(account => account.currency === 'NGN').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
@@ -1912,7 +1937,18 @@ export default function AdminApp() {
               <div className="input-group receipt-currency"><label className="input-label">Currency</label><select className="input-field" value={receiptForm.currency} onChange={event => setReceiptForm(form => ({ ...form, currency: event.target.value }))}><option>NGN</option><option>RMB</option><option>USD</option><option>GBP</option><option>EUR</option><option>XOF</option><option>GHS</option></select></div>
             </div>
             <section className="receipt-builder-section">
-              <div className="receipt-builder-heading"><div><strong>1. Select goods</strong><span>Combine any goods belonging to this client.</span></div><span>{receiptForm.goods_ids.length} selected</span></div>
+              <div className="receipt-builder-heading"><div><strong>1. Select container or air batch</strong><span>The receipt will group this client's goods within one load.</span></div></div>
+              <select className="input-field" value={receiptForm.container_id} onChange={event => selectReceiptContainer(event.target.value)}>
+                {receiptContainerOptions.map(containerId => {
+                  const load = containers.find(item => item.id === containerId)
+                  const itemCount = goods.filter(item => item.client_id === receiptForm.client_id && (item.container_id || 'unassigned') === containerId).length
+                  return <option key={containerId} value={containerId}>{load ? `${load.container_no} · ${loadKindLabel(load)} · ${load.route || 'Route pending'}` : 'Unassigned warehouse goods'} ({itemCount})</option>
+                })}
+              </select>
+              {receiptContainer && <div className="receipt-load-summary"><Container size={16} /><div><strong>{receiptContainer.container_no}</strong><span>{loadKindLabel(receiptContainer)} · {receiptContainer.status} · {receiptContainer.route}</span></div></div>}
+            </section>
+            <section className="receipt-builder-section">
+              <div className="receipt-builder-heading"><div><strong>2. Select goods</strong><span>All goods below belong to the selected load and client.</span></div><span>{receiptForm.goods_ids.length} selected</span></div>
               <div className="receipt-goods-list">
                 {receiptClientGoods.map(item => {
                   const selected = receiptForm.goods_ids.includes(item.id)
@@ -1922,7 +1958,7 @@ export default function AdminApp() {
               </div>
             </section>
             <section className="receipt-builder-section">
-              <div className="receipt-builder-heading"><div><strong>2. Enter charges</strong><span>Prices are never filled automatically.</span></div><button type="button" className="btn btn-xs btn-secondary" onClick={addReceiptCharge}>+ Add charge</button></div>
+              <div className="receipt-builder-heading"><div><strong>3. Enter charges</strong><span>Prices are never filled automatically.</span></div><button type="button" className="btn btn-xs btn-secondary" onClick={addReceiptCharge}>+ Add charge</button></div>
               <div className="receipt-line-list">
                 {receiptForm.items.map((item, index) => (
                   <div className="receipt-line" key={`${item.goods_id || 'charge'}-${index}`}>

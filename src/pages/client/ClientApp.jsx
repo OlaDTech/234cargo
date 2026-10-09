@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2 } from 'lucide-react'
+import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2, Bell } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -53,7 +53,10 @@ export default function ClientApp() {
   const [topUpForm, setTopUpForm] = useState(TOP_UP_DEFAULT)
   const [topUpProof, setTopUpProof] = useState(null)
   const [submittingTopUp, setSubmittingTopUp] = useState(false)
+  const [notificationPermission, setNotificationPermission] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const chatListRef = useRef(null)
+  const knownGoodsIdsRef = useRef(new Set())
+  const goodsLoadedRef = useRef(false)
   const knownMessageIdsRef = useRef(new Set())
   const messagesLoadedRef = useRef(false)
   const readMessageIdsRef = useRef(new Set())
@@ -99,7 +102,7 @@ export default function ClientApp() {
   }, [tab, clientSessionToken, loadWallet])
 
   useEffect(() => {
-    const interval = setInterval(() => loadAll(false), 60000)
+    const interval = setInterval(() => loadAll(false), 15000)
     return () => clearInterval(interval)
   }, [clientSessionToken])
 
@@ -122,7 +125,20 @@ export default function ClientApp() {
     if (showLoader) setLoading(true)
     try {
       const data = await getClientPortal(clientSessionToken)
-      setGoods(data.goods || []); setAnnouncements(data.announcements || []); setSuppliers(data.suppliers || [])
+      const nextGoods = data.goods || []
+      if (goodsLoadedRef.current) {
+        const newlyReceived = nextGoods.filter(item => !knownGoodsIdsRef.current.has(item.id))
+        if (newlyReceived.length) {
+          const latest = newlyReceived[0]
+          toast.success(`Goods received: ${latest.description}`, { duration: 6000, icon: '📦' })
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification('Goods received at the warehouse', { body: `${latest.description}${latest.tracking_no ? ` · ${latest.tracking_no}` : ''}`, icon: '/favicon.svg', tag: `goods-${latest.id}` })
+          }
+        }
+      }
+      knownGoodsIdsRef.current = new Set(nextGoods.map(item => item.id))
+      goodsLoadedRef.current = true
+      setGoods(nextGoods); setAnnouncements(data.announcements || []); setSuppliers(data.suppliers || [])
       const nextMessages = (data.messages || []).map(message => readMessageIdsRef.current.has(message.id) ? { ...message, is_read: true } : message)
       if (messagesLoadedRef.current) {
         const newReplies = nextMessages.filter(message => message.sender !== 'client' && !knownMessageIdsRef.current.has(message.id))
@@ -137,6 +153,14 @@ export default function ClientApp() {
     } finally {
       if (showLoader) setLoading(false)
     }
+  }
+
+  const enableGoodsNotifications = async () => {
+    if (typeof Notification === 'undefined') { toast.error('Browser notifications are not supported on this device'); return }
+    const permission = await Notification.requestPermission()
+    setNotificationPermission(permission)
+    if (permission === 'granted') toast.success('Goods notifications enabled')
+    else toast('Notifications remain off. You will still see updates inside the app.')
   }
 
   const sendMsg = async () => {
@@ -312,6 +336,7 @@ export default function ClientApp() {
             <div className="client-header-avatar">
               {clientUser.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
             </div>
+            <button className={`client-notification-toggle${notificationPermission === 'granted' ? ' is-enabled' : ''}`} onClick={enableGoodsNotifications} title={notificationPermission === 'granted' ? 'Goods notifications enabled' : 'Enable goods notifications'} aria-label={notificationPermission === 'granted' ? 'Goods notifications enabled' : 'Enable goods notifications'}><Bell size={17} /></button>
             <button className="client-refresh" onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data"><RefreshCw size={17} style={{ opacity: refreshing ? 0.55 : 1 }} /></button>
             <button className="client-logout" onClick={signOut} title="Log out" aria-label="Log out"><LogOut size={18} /></button>
           </div>
@@ -332,6 +357,8 @@ export default function ClientApp() {
               <div><span>Your shipping mark</span><strong>{clientUser.shipping_mark}</strong></div>
               <button onClick={() => setShowLabel(true)}><QrCode size={18} />Label</button>
             </section>
+
+            {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && <button type="button" className="client-notification-prompt" onClick={enableGoodsNotifications}><Bell size={18} /><span><strong>Get goods alerts</strong><small>Be notified when the warehouse records a new package.</small></span><ArrowRight size={17} /></button>}
 
             <button type="button" className="client-purchase-card" onClick={() => setTab('purchase')}>
               <span className="client-purchase-icon"><ShoppingCart size={21} /></span>
