@@ -56,6 +56,12 @@ export default function ClientApp() {
   const chatListRef = useRef(null)
   const knownMessageIdsRef = useRef(new Set())
   const messagesLoadedRef = useRef(false)
+  const readMessageIdsRef = useRef(new Set())
+
+  const rememberReadMessages = messageIds => {
+    messageIds.forEach(id => readMessageIdsRef.current.add(id))
+    try { localStorage.setItem(`234cargo:read-messages:${clientUser.id}`, JSON.stringify([...readMessageIdsRef.current])) } catch { /* Storage can be unavailable in private browsing. */ }
+  }
 
   const loadWallet = useCallback(async () => {
     if (!clientSessionToken) {
@@ -80,6 +86,10 @@ export default function ClientApp() {
 
   useEffect(() => { loadAll() }, [clientUser.id])
 
+  useEffect(() => {
+    try { readMessageIdsRef.current = new Set(JSON.parse(localStorage.getItem(`234cargo:read-messages:${clientUser.id}`) || '[]')) } catch { readMessageIdsRef.current = new Set() }
+  }, [clientUser.id])
+
   useEffect(() => { loadWallet() }, [loadWallet])
 
   useEffect(() => {
@@ -103,8 +113,9 @@ export default function ClientApp() {
     if (tab !== 'chat' || !clientSessionToken) return
     const unread = messages.some(message => message.sender !== 'client' && !message.is_read)
     if (!unread) return
+    rememberReadMessages(messages.filter(message => message.sender !== 'client').map(message => message.id))
     setMessages(current => current.map(message => message.sender !== 'client' ? { ...message, is_read: true } : message))
-    markClientMessagesRead(clientSessionToken).catch(() => toast.error('Could not clear the message notification'))
+    markClientMessagesRead(clientSessionToken).catch(() => {})
   }, [tab, clientSessionToken, messages])
 
   const loadAll = async (showLoader = true) => {
@@ -112,7 +123,7 @@ export default function ClientApp() {
     try {
       const data = await getClientPortal(clientSessionToken)
       setGoods(data.goods || []); setAnnouncements(data.announcements || []); setSuppliers(data.suppliers || [])
-      const nextMessages = data.messages || []
+      const nextMessages = (data.messages || []).map(message => readMessageIdsRef.current.has(message.id) ? { ...message, is_read: true } : message)
       if (messagesLoadedRef.current) {
         const newReplies = nextMessages.filter(message => message.sender !== 'client' && !knownMessageIdsRef.current.has(message.id))
         if (newReplies.length && tab !== 'chat') toast(`New message: ${newReplies[newReplies.length - 1].message.slice(0, 80)}`, { icon: '💬', duration: 5000 })
