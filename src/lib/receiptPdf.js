@@ -78,25 +78,30 @@ export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Lo
 
   commands.push(`0.95 g 48 ${y - 8} 499 20 re f`)
   commands.push('0 g')
-  text(56, y, 9, 'DESCRIPTION', true)
-  text(350, y, 9, 'QTY', true)
-  text(405, y, 9, 'RATE', true)
-  text(478, y, 9, 'AMOUNT', true)
+  text(56, y, 8, 'DESCRIPTION', true)
+  text(315, y, 8, 'PACKAGES', true)
+  text(370, y, 8, 'CBM / KG', true)
+  text(430, y, 8, 'UNIT PRICE', true)
+  text(500, y, 8, 'AMOUNT', true)
   y -= 20
 
   const rows = items.length ? items : [{ desc: 'Shipping service', qty: 1, unit_price: receipt.subtotal || receipt.total || 0 }]
   rows.forEach(item => {
     const label = item.container_no ? `${item.desc || item.description || 'Shipping service'} [Container / batch: ${item.container_no}]` : (item.desc || item.description || 'Shipping service')
-    const descriptionLines = wrapText(label, 46)
+    const descriptionLines = wrapText(label, 38)
     descriptionLines.forEach((description, index) => {
       text(56, y, 9, description)
       if (index === 0) {
+        const hasMeasurement = Number(item.measurement) > 0
         const quantity = Number(item.qty ?? item.quantity ?? 1) || 1
+        const measurement = hasMeasurement ? Number(item.measurement) : quantity
+        const measurementLabel = `${Number(measurement.toFixed(4))} ${item.measurement_unit || (hasMeasurement ? 'unit' : '')}`.trim()
         const rate = Number(item.unit_price ?? item.rate ?? 0) || 0
-        const amount = Number(item.amount ?? quantity * rate) || 0
-        text(350, y, 9, quantity)
-        text(405, y, 9, money(rate, currency))
-        text(478, y, 9, money(amount, currency))
+        const amount = Number(item.amount ?? (hasMeasurement ? quantity * measurement * rate : quantity * rate)) || 0
+        text(315, y, 8, hasMeasurement ? quantity : '-')
+        text(370, y, 8, measurementLabel)
+        text(430, y, 8, money(rate, currency))
+        text(500, y, 8, money(amount, currency))
       }
       y -= 14
     })

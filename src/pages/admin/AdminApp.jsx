@@ -48,21 +48,27 @@ const receiptGoodsIds = receipt => {
   return [...new Set([receipt?.goods_id, ...itemIds].filter(Boolean))]
 }
 
-const receiptLineForGoods = (goodsRecord, load) => ({
-  goods_id: goodsRecord.id,
-  container_id: goodsRecord.container_id || null,
-  container_no: load?.container_no || 'Unassigned',
-  desc: goodsRecord.description || 'Freight charge',
-  qty: '1',
-  unit_price: '',
-  kind: 'shipping',
-})
+const receiptLineForGoods = (goodsRecord, load) => {
+  const quantity = goodsQuantity(goodsRecord)
+  const totalMeasurement = goodsRecord.type === 'sea' ? (parseFloat(goodsRecord.cbm) || 0) : (parseFloat(goodsRecord.weight_kg) || 0)
+  return {
+    goods_id: goodsRecord.id,
+    container_id: goodsRecord.container_id || null,
+    container_no: load?.container_no || 'Unassigned',
+    desc: goodsRecord.description || 'Freight charge',
+    qty: String(quantity),
+    measurement: totalMeasurement ? String(totalMeasurement / quantity) : '',
+    measurement_unit: goodsRecord.type === 'sea' ? 'CBM' : 'kg',
+    unit_price: '',
+    kind: 'shipping',
+  }
+}
 
 const receiptCostBreakdown = receipt => {
   const items = receiptItems(receipt)
   const shippingItems = items.filter(item => item.kind === 'shipping')
   const clearanceItems = items.filter(item => item.kind === 'clearance')
-  const amountFor = rows => rows.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unit_price) || 0), 0)
+  const amountFor = rows => rows.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.measurement) || 1) * (Number(item.unit_price) || 0), 0)
   if (!shippingItems.length && !clearanceItems.length) {
     return { shipping_cost: Number(receipt?.subtotal) || 0, clearance_cost: 0 }
   }
@@ -310,7 +316,7 @@ export default function AdminApp() {
   const addReceiptCharge = () => {
     setReceiptForm(form => {
       const load = containers.find(item => item.id === form.container_id)
-      return { ...form, items: [...form.items, { desc: '', qty: '1', unit_price: '', kind: 'other', container_id: load?.id || null, container_no: load?.container_no || 'Unassigned' }] }
+      return { ...form, items: [...form.items, { desc: '', qty: '1', measurement: '1', measurement_unit: 'unit', unit_price: '', kind: 'other', container_id: load?.id || null, container_no: load?.container_no || 'Unassigned' }] }
     })
   }
 
@@ -329,16 +335,17 @@ export default function AdminApp() {
     const selectedGoods = goods.filter(item => receiptForm.goods_ids.includes(item.id) && item.client_id === receiptForm.client_id)
     if (!receiptForm.client_id || !selectedGoods.length) { toast.error('Select at least one goods record for this receipt.'); return }
     if (!receiptForm.items.length) { toast.error('Add at least one receipt charge.'); return }
-    const invalidItem = receiptForm.items.find(item => !item.desc?.trim() || !(parseFloat(item.qty) > 0) || parseFloat(item.unit_price) < 0 || item.unit_price === '')
-    if (invalidItem) { toast.error('Complete the description, quantity and price for every receipt item.'); return }
+    const invalidItem = receiptForm.items.find(item => !item.desc?.trim() || !(parseFloat(item.qty) > 0) || !(parseFloat(item.measurement) > 0) || parseFloat(item.unit_price) < 0 || item.unit_price === '')
+    if (invalidItem) { toast.error('Complete the description, quantity, CBM or weight, and unit price for every receipt item.'); return }
     const billableItems = receiptForm.items.map(item => ({
       ...item,
       desc: item.desc.trim(),
       qty: parseFloat(item.qty),
+      measurement: parseFloat(item.measurement),
       unit_price: parseFloat(item.unit_price),
-      amount: parseFloat(item.qty) * parseFloat(item.unit_price),
+      amount: parseFloat(item.qty) * parseFloat(item.measurement) * parseFloat(item.unit_price),
     }))
-    const subtotal = billableItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
+    const subtotal = billableItems.reduce((sum, item) => sum + item.amount, 0)
     const discount = Math.max(0, parseFloat(receiptForm.discount) || 0)
     if (subtotal <= 0) { toast.error('Enter a price greater than zero before generating the receipt.'); return }
     if (discount > subtotal) { toast.error('Discount cannot be greater than the receipt subtotal.'); return }
@@ -1078,7 +1085,7 @@ export default function AdminApp() {
   const receiptContainerOptions = [...new Set(goods.filter(item => item.client_id === receiptForm.client_id).map(item => item.container_id || 'unassigned'))]
   const receiptClientGoods = goods.filter(item => item.client_id === receiptForm.client_id && (item.container_id || 'unassigned') === receiptForm.container_id)
   const receiptContainer = containers.find(item => item.id === receiptForm.container_id)
-  const receiptSubtotal = receiptForm.items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0), 0)
+  const receiptSubtotal = receiptForm.items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0) * (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), 0)
   const receiptTotal = Math.max(0, receiptSubtotal - (parseFloat(receiptForm.discount) || 0))
   const walletNgnTotal = walletAccounts.filter(account => account.currency === 'NGN').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
   const walletRmbTotal = walletAccounts.filter(account => account.currency === 'RMB').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
@@ -1981,9 +1988,10 @@ export default function AdminApp() {
                 {receiptForm.items.map((item, index) => (
                   <div className="receipt-line" key={`${item.goods_id || 'charge'}-${index}`}>
                     <div className="receipt-line-description"><label className="input-label">Description</label><input className="input-field" value={item.desc} onChange={event => updateReceiptItem(index, 'desc', event.target.value)} placeholder="Freight, clearance or handling" /></div>
-                    <div><label className="input-label">Qty</label><input className="input-field" type="number" min="0.01" step="0.01" value={item.qty} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} /></div>
+                    <div><label className="input-label">Packages</label><input className="input-field" type="number" min="1" step="1" value={item.qty} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} /></div>
+                    <div><label className="input-label">{item.measurement_unit === 'kg' ? 'kg / package' : item.measurement_unit === 'CBM' ? 'CBM / package' : 'Units'}</label><input className="input-field" type="number" min="0.0001" step="0.0001" value={item.measurement} onChange={event => updateReceiptItem(index, 'measurement', event.target.value)} /></div>
                     <div><label className="input-label">Unit price</label><input className="input-field" type="number" min="0" step="0.01" value={item.unit_price} onChange={event => updateReceiptItem(index, 'unit_price', event.target.value)} placeholder="0.00" /></div>
-                    <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
+                    <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.qty) || 0) * (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
                     <button type="button" className="receipt-line-remove" onClick={() => removeReceiptItem(index)} aria-label={`Remove ${item.desc || 'charge'}`}><Trash2 size={15} /></button>
                   </div>
                 ))}

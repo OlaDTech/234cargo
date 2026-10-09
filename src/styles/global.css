@@ -219,7 +219,7 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .receipt-goods-option strong, .receipt-goods-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .receipt-goods-option strong { font-size: 12px; }.receipt-goods-option span { color: var(--t2); font-size: 10px; }
 .receipt-line-list { display: grid; gap: 8px; }
-.receipt-line { display: grid; grid-template-columns: minmax(170px, 2fr) 80px 120px 125px 32px; align-items: end; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; }
+.receipt-line { display: grid; grid-template-columns: minmax(150px, 2fr) 74px 105px 110px 120px 32px; align-items: end; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; }
 .receipt-line .input-label { margin-bottom: 4px; }.receipt-line .input-field { padding: 9px 10px; }
 .receipt-line-amount { min-width: 0; display: grid; gap: 8px; padding-bottom: 9px; }.receipt-line-amount strong { overflow-wrap: anywhere; font-size: 12px; }
 .receipt-line-remove { display: grid; place-items: center; width: 32px; height: 38px; border: 0; border-radius: 7px; background: var(--red-bg); color: var(--red); cursor: pointer; }
