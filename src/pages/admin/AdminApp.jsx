@@ -58,7 +58,8 @@ const receiptLineForGoods = (goodsRecord, load) => {
     desc: goodsRecord.description || 'Freight charge',
     qty: String(quantity),
     recorded_quantity: quantity,
-    measurement: totalMeasurement ? String(totalMeasurement / quantity) : '',
+    measurement: totalMeasurement ? String(totalMeasurement) : '',
+    recorded_measurement: totalMeasurement || null,
     measurement_unit: goodsRecord.type === 'sea' ? 'CBM' : 'kg',
     unit_price: '',
     kind: 'shipping',
@@ -341,7 +342,10 @@ export default function AdminApp() {
     const billableItems = receiptForm.items.map(item => {
       const recordedGoods = item.goods_id ? selectedGoods.find(goodsRecord => goodsRecord.id === item.goods_id) : null
       const quantity = recordedGoods ? goodsQuantity(recordedGoods) : parseFloat(item.qty)
-      const measurement = parseFloat(item.measurement)
+      const recordedMeasurement = recordedGoods
+        ? (recordedGoods.type === 'sea' ? (parseFloat(recordedGoods.cbm) || 0) : (parseFloat(recordedGoods.weight_kg) || 0))
+        : null
+      const measurement = recordedGoods ? recordedMeasurement : parseFloat(item.measurement)
       const unitPrice = parseFloat(item.unit_price)
       return {
         ...item,
@@ -349,6 +353,7 @@ export default function AdminApp() {
         qty: quantity,
         recorded_quantity: recordedGoods ? quantity : item.recorded_quantity,
         measurement,
+        recorded_measurement: recordedGoods ? measurement : item.recorded_measurement,
         unit_price: unitPrice,
         amount: quantity * measurement * unitPrice,
       }
@@ -1997,7 +2002,7 @@ export default function AdminApp() {
                   <div className="receipt-line" key={`${item.goods_id || 'charge'}-${index}`}>
                     <div className="receipt-line-description"><label className="input-label">Description</label><input className="input-field" value={item.desc} onChange={event => updateReceiptItem(index, 'desc', event.target.value)} placeholder="Freight, clearance or handling" /></div>
                     <div><label className="input-label">Recorded quantity</label><input className="input-field" type="number" min="1" step="1" value={item.goods_id ? item.recorded_quantity ?? item.qty : item.qty} readOnly={!!item.goods_id} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} title={item.goods_id ? 'This quantity comes from the recorded goods' : 'Enter the quantity'} /></div>
-                    <div><label className="input-label">{item.measurement_unit === 'kg' ? 'kg / package' : item.measurement_unit === 'CBM' ? 'CBM / package' : 'Units'}</label><input className="input-field" type="number" min="0.0001" step="0.0001" value={item.measurement} onChange={event => updateReceiptItem(index, 'measurement', event.target.value)} /></div>
+                    <div><label className="input-label">{item.measurement_unit === 'kg' ? 'Recorded kg' : item.measurement_unit === 'CBM' ? 'Recorded CBM' : 'Units'}</label><input className="input-field" type="number" min="0.0001" step="0.0001" value={item.goods_id ? item.recorded_measurement ?? item.measurement : item.measurement} readOnly={!!item.goods_id} onChange={event => updateReceiptItem(index, 'measurement', event.target.value)} title={item.goods_id ? 'This value comes from the recorded goods' : 'Enter the measurement'} /></div>
                     <div><label className="input-label">Unit price</label><input className="input-field" type="number" min="0" step="0.01" value={item.unit_price} onChange={event => updateReceiptItem(index, 'unit_price', event.target.value)} placeholder="0.00" /></div>
                     <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.qty) || 0) * (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
                     <button type="button" className="receipt-line-remove" onClick={() => removeReceiptItem(index)} aria-label={`Remove ${item.desc || 'charge'}`}><Trash2 size={15} /></button>
