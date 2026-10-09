@@ -70,7 +70,11 @@ const receiptCostBreakdown = receipt => {
   const items = receiptItems(receipt)
   const shippingItems = items.filter(item => item.kind === 'shipping')
   const clearanceItems = items.filter(item => item.kind === 'clearance')
-  const amountFor = rows => rows.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.measurement) || 1) * (Number(item.unit_price) || 0), 0)
+  const amountFor = rows => rows.reduce((sum, item) => {
+    const measurement = Number(item.measurement)
+    const billableMeasurement = measurement > 0 ? measurement : (Number(item.qty) || 0)
+    return sum + billableMeasurement * (Number(item.unit_price) || 0)
+  }, 0)
   if (!shippingItems.length && !clearanceItems.length) {
     return { shipping_cost: Number(receipt?.subtotal) || 0, clearance_cost: 0 }
   }
@@ -368,7 +372,7 @@ export default function AdminApp() {
         measurement,
         recorded_measurement: recordedGoods ? measurement : item.recorded_measurement,
         unit_price: unitPrice,
-        amount: quantity * measurement * unitPrice,
+        amount: measurement * unitPrice,
       }
     })
     const subtotal = billableItems.reduce((sum, item) => sum + item.amount, 0)
@@ -1111,7 +1115,7 @@ export default function AdminApp() {
   const receiptContainerOptions = [...new Set(goods.filter(item => item.client_id === receiptForm.client_id).map(item => item.container_id || 'unassigned'))]
   const receiptClientGoods = goods.filter(item => item.client_id === receiptForm.client_id && (item.container_id || 'unassigned') === receiptForm.container_id)
   const receiptContainer = containers.find(item => item.id === receiptForm.container_id)
-  const receiptSubtotal = receiptForm.items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0) * (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), 0)
+  const receiptSubtotal = receiptForm.items.reduce((sum, item) => sum + (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), 0)
   const receiptTotal = Math.max(0, receiptSubtotal - (parseFloat(receiptForm.discount) || 0))
   const walletNgnTotal = walletAccounts.filter(account => account.currency === 'NGN').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
   const walletRmbTotal = walletAccounts.filter(account => account.currency === 'RMB').reduce((sum, account) => sum + (parseFloat(account.available_balance) || 0), 0)
@@ -2002,7 +2006,7 @@ export default function AdminApp() {
               </div>
             </section>
             <section className="receipt-builder-section">
-              <div className="receipt-builder-heading"><div><strong>3. Enter charges</strong><span>Prices are never filled automatically.</span></div><button type="button" className="btn btn-xs btn-secondary" onClick={addReceiptCharge}>+ Add charge</button></div>
+              <div className="receipt-builder-heading"><div><strong>3. Enter charges</strong><span>Quantity is shown for reference. Amount = recorded CBM or kg × unit price.</span></div><button type="button" className="btn btn-xs btn-secondary" onClick={addReceiptCharge}>+ Add charge</button></div>
               <div className="receipt-line-list">
                 {receiptForm.items.map((item, index) => (
                   <div className="receipt-line" key={`${item.goods_id || 'charge'}-${index}`}>
@@ -2010,7 +2014,7 @@ export default function AdminApp() {
                     <div><label className="input-label">Recorded quantity</label><input className="input-field" type="number" min="1" step="1" value={item.goods_id ? item.recorded_quantity ?? item.qty : item.qty} readOnly={!!item.goods_id} onChange={event => updateReceiptItem(index, 'qty', event.target.value)} title={item.goods_id ? 'This quantity comes from the recorded goods' : 'Enter the quantity'} /></div>
                     <div><label className="input-label">{item.measurement_unit === 'kg' ? 'Recorded kg' : item.measurement_unit === 'CBM' ? 'Recorded CBM' : 'Units'}</label><input className="input-field" type="number" min="0.0001" step="0.0001" value={item.goods_id ? item.recorded_measurement ?? item.measurement : item.measurement} readOnly={!!item.goods_id} onChange={event => updateReceiptItem(index, 'measurement', event.target.value)} title={item.goods_id ? 'This value comes from the recorded goods' : 'Enter the measurement'} /></div>
                     <div><label className="input-label">Unit price</label><input className="input-field" type="number" min="0" step="0.01" value={item.unit_price} onChange={event => updateReceiptItem(index, 'unit_price', event.target.value)} placeholder="0.00" /></div>
-                    <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.qty) || 0) * (parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
+                    <div className="receipt-line-amount"><label className="input-label">Amount</label><strong>{formatMoney((parseFloat(item.measurement) || 0) * (parseFloat(item.unit_price) || 0), receiptForm.currency)}</strong></div>
                     <button type="button" className="receipt-line-remove" onClick={() => removeReceiptItem(index)} aria-label={`Remove ${item.desc || 'charge'}`}><Trash2 size={15} /></button>
                   </div>
                 ))}

@@ -97,7 +97,7 @@ export function downloadReceiptPdf({ receipt, client, companyName = '234Cargo Lo
         const measurement = hasMeasurement ? Number(item.measurement) : quantity
         const measurementLabel = `${Number(measurement.toFixed(4))} ${item.measurement_unit || (hasMeasurement ? 'unit' : '')}`.trim()
         const rate = Number(item.unit_price ?? item.rate ?? 0) || 0
-        const amount = Number(item.amount ?? (hasMeasurement ? quantity * measurement * rate : quantity * rate)) || 0
+        const amount = Number(item.amount ?? (hasMeasurement ? measurement * rate : quantity * rate)) || 0
         text(315, y, 8, hasMeasurement ? quantity : '-')
         text(370, y, 8, measurementLabel)
         text(430, y, 8, money(rate, currency))
