@@ -582,7 +582,7 @@ export default function ClientApp() {
             <LabelMethodPicker />
             <ShippingLabel client={clientUser} settings={settings} shipmentType={labelShipmentType} />
             <button onClick={async () => { if (!(await downloadShippingLabelPdf({ client: clientUser, settings, shipmentType: labelShipmentType }))) toast.error('Could not download this label') }} className="btn btn-navy btn-full" style={{ marginTop: 16, padding: 14 }}>
-              <Download size={17} />Download 100 x 100 mm Label
+              <Download size={17} />Download 100 × 100 mm Label
             </button>
             <div className="banner banner-info" style={{ marginTop: 12 }}>
               Share your shipping mark <strong>{clientUser.shipping_mark}</strong> with your supplier. They must write or attach it clearly on all your packages.
@@ -692,7 +692,7 @@ export default function ClientApp() {
       <Modal open={showLabel} title="Shipping Label" onClose={() => setShowLabel(false)}>
         <LabelMethodPicker />
         <ShippingLabel client={clientUser} settings={settings} shipmentType={labelShipmentType} />
-        <button onClick={async () => { if (!(await downloadShippingLabelPdf({ client: clientUser, settings, shipmentType: labelShipmentType }))) toast.error('Could not download this label') }} className="btn btn-navy btn-full" style={{ marginTop: 12 }}><Download size={17} />Download 100 x 100 mm Label</button>
+        <button onClick={async () => { if (!(await downloadShippingLabelPdf({ client: clientUser, settings, shipmentType: labelShipmentType }))) toast.error('Could not download this label') }} className="btn btn-navy btn-full" style={{ marginTop: 12 }}><Download size={17} />Download 100 × 100 mm Label</button>
       </Modal>
     </div>
   )

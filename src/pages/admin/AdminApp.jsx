@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
+import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
 import { DEFAULT_NIGERIA_STATE, NIGERIA_COUNTRY, NIGERIA_STATES } from '../../lib/nigeria'
 import { marketplaceUrl, purchasePlatformLabel, purchaseStatusMeta, PURCHASE_STATUSES } from '../../lib/purchaseRequests'
 
@@ -1779,7 +1780,7 @@ export default function AdminApp() {
       <Modal open={!!showClientLabel} title="Client Shipping Label" onClose={() => setShowClientLabel(null)}>
         <TabRow tabs={[{ id: 'sea', label: 'Sea Freight' }, { id: 'air', label: 'Air Freight' }]} active={adminLabelType} onChange={setAdminLabelType} />
         <ShippingLabel client={showClientLabel} settings={settings} shipmentType={adminLabelType} />
-        <button className="btn btn-navy btn-full" onClick={() => window.print()} style={{ marginTop: 14 }}><Download size={16} />Download / Print Label</button>
+        <button className="btn btn-navy btn-full" onClick={async () => { if (!(await downloadShippingLabelPdf({ client: showClientLabel, settings, shipmentType: adminLabelType }))) toast.error('Could not download this label') }} style={{ marginTop: 14 }}><Download size={16} />Download 100 × 100 mm PDF</button>
       </Modal>
 
       <Modal open={showAddClient || !!showEditClient} title={showEditClient ? 'Edit Client' : 'Register Client'} onClose={() => { setShowAddClient(false); setShowEditClient(null) }}>
