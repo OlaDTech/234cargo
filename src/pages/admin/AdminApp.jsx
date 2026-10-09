@@ -287,6 +287,19 @@ export default function AdminApp() {
     setShowReceiptGen({ client_id: goodsRecord.client_id })
   }
 
+  const openFinanceReceiptBuilder = () => {
+    const firstClient = clients.find(client => goods.some(goodsRecord => goodsRecord.client_id === client.id))
+    const firstGoods = firstClient && goods.find(goodsRecord => goodsRecord.client_id === firstClient.id)
+    if (!firstGoods) { toast.error('Record goods for a client before creating a receipt.'); return }
+    openReceiptBuilder(firstGoods)
+  }
+
+  const selectReceiptClient = clientId => {
+    const firstGoods = goods.find(goodsRecord => goodsRecord.client_id === clientId)
+    if (!firstGoods) return
+    openReceiptBuilder(firstGoods)
+  }
+
   const selectReceiptContainer = containerId => {
     const load = containers.find(item => item.id === containerId)
     const groupedGoods = goods.filter(item => item.client_id === receiptForm.client_id && (item.container_id || 'unassigned') === containerId)
@@ -1265,7 +1278,6 @@ export default function AdminApp() {
               </div>
             </div>
             {loading ? <SkeletonList /> : filteredGoods.map(g => {
-              const hasReceipt = receipts.find(r => receiptGoodsIds(r).includes(g.id))
               const assignLabel = loadAssignmentLabel(g)
               const compatibleLoads = compatibleLoadsForGoods(containers, g)
               return (
@@ -1310,15 +1322,9 @@ export default function AdminApp() {
                       </button>
                     ))}
                   </div>
-                  {/* Receipt */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => openGoodsEdit(g)} className="btn btn-sm btn-secondary"><Pencil size={14} />Edit</button>
                     <button onClick={() => deleteGoodsRecord(g)} className="btn btn-sm btn-danger"><Trash2 size={14} />Delete</button>
-                    {!hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
-                      <button onClick={() => openReceiptBuilder(g)} className="btn btn-sm btn-secondary">Generate Receipt</button>
-                    ) : hasReceipt && (hasPermission('receipts') || hasPermission('finance')) ? (
-                      <button onClick={() => setShowReceiptView(hasReceipt)} className="btn btn-sm btn-ghost">View Receipt</button>
-                    ) : null}
                   </div>
                 </div>
               )
@@ -1620,7 +1626,7 @@ export default function AdminApp() {
             </div>
             </>}
 
-            <SectionHeader title="Payment List" action={<button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-payments', receipts.map(r => ({ date: r.issued_at, receipt_no: r.receipt_no, client: r.client?.full_name, status: r.status, total_ngn: r.total, paid_at: r.paid_at })))}><Download size={13} />Export</button>} />
+            <SectionHeader title="Client Receipts" action={<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn btn-xs btn-primary" onClick={openFinanceReceiptBuilder}>+ New Receipt</button><button className="btn btn-xs btn-secondary" onClick={() => exportCsv('234cargo-receipts', receipts.map(r => ({ date: r.issued_at, receipt_no: r.receipt_no, client: r.client?.full_name, status: r.status, total: r.total, currency: r.currency || 'NGN', paid_at: r.paid_at })))}><Download size={13} />Export</button></div>} />
             <div className="card" style={{ padding: 8, overflowX: 'auto' }}>
               <table className="finance-table">
                 <thead>
@@ -1971,7 +1977,7 @@ export default function AdminApp() {
         {showReceiptGen && (
           <div className="receipt-builder">
             <div className="receipt-builder-client">
-              <div><span>Client</span><strong>{receiptClient?.full_name}</strong><small>{receiptClient?.shipping_mark}</small></div>
+              <div className="receipt-client-select"><span>Client</span><select className="input-field" value={receiptForm.client_id} onChange={event => selectReceiptClient(event.target.value)}>{clients.filter(client => goods.some(goodsRecord => goodsRecord.client_id === client.id)).map(client => <option key={client.id} value={client.id}>{client.full_name} · {client.shipping_mark}</option>)}</select><small>{receiptClient?.shipping_mark}</small></div>
               <div className="input-group receipt-currency"><label className="input-label">Currency</label><select className="input-field" value={receiptForm.currency} onChange={event => setReceiptForm(form => ({ ...form, currency: event.target.value }))}><option>NGN</option><option>RMB</option><option>USD</option><option>GBP</option><option>EUR</option><option>XOF</option><option>GHS</option></select></div>
             </div>
             <section className="receipt-builder-section">

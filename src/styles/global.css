@@ -201,6 +201,8 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .receipt-builder { display: grid; gap: 14px; }
 .receipt-builder-client { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .receipt-builder-client > div:first-child { display: grid; gap: 2px; }
+.receipt-client-select { flex: 1; min-width: 0; }
+.receipt-client-select .input-field { min-width: 220px; padding: 9px 10px; }
 .receipt-builder-client span, .receipt-builder-client small { color: var(--t2); font-size: 11px; }
 .receipt-builder-client strong { color: var(--ink); font-size: 15px; }
 .receipt-currency { width: 120px; margin: 0; }
@@ -230,6 +232,8 @@ textarea.input-field { resize: vertical; min-height: 88px; }
 .receipt-builder-summary > div:not(.input-group) { display: grid; gap: 5px; min-width: 110px; }.receipt-builder-summary span { color: #C8D5E5; font-size: 11px; }.receipt-builder-summary strong { font-size: 15px; }
 .receipt-builder-total strong { color: var(--teal); font-size: 19px; }
 @media (max-width: 680px) {
+  .receipt-builder-client { align-items: stretch; flex-direction: column; }
+  .receipt-client-select .input-field, .receipt-currency { width: 100%; min-width: 0; }
   .receipt-goods-list { grid-template-columns: 1fr; }
   .receipt-line { grid-template-columns: 1fr 1fr; }
   .receipt-line-description { grid-column: 1 / -1; }.receipt-line-amount { align-self: center; }.receipt-line-remove { justify-self: end; align-self: center; }
