@@ -355,50 +355,48 @@ export function ShippingLabel({ client, settings = {}, shipmentType }) {
   const payload = `234:${client.shipping_mark || ''}:${method}`
   const warehouse = warehouseForShipment(settings, shipmentType)
   const displayPhone = maskPhone(client.phone)
+  const methodLabel = method === 'air' ? 'Air Freight' : method === 'sea' ? 'Sea Freight' : 'Freight'
+
   return (
     <div className="shipping-label">
-      {/* Brand header bar */}
-      <div style={{ background: 'var(--teal)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-        <div style={{ width: 84, height: 30, borderRadius: 7, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 7px' }}>
-          <img src="/234cargo-logo.svg" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+      <div className="shipping-label-top">
+        <div className="shipping-label-brand">
+          <img src="/234cargo-logo.svg" alt="234Cargo" />
+          <span>China to Nigeria Logistics</span>
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'Space Grotesk,sans-serif' }}>{settings.company_name || '234Cargo Logistics'}</div>
-          <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 9.5, letterSpacing: 0.3 }}>FREIGHT FORWARDING</div>
-        </div>
-        <Icons.box size={18} color="rgba(255,255,255,0.85)" />
+        <div className={`shipping-label-method shipping-method-${method}`}>{methodLabel}</div>
       </div>
-      <div style={{ padding: 16 }}>
-        {method !== 'general' && <div className={`shipping-method-badge shipping-method-${method}`}>{method === 'air' ? 'AIR FREIGHT' : 'SEA FREIGHT'}</div>}
-        <div style={{ display: 'flex', gap: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Consignee</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--t1)', marginTop: 2 }}>{client.full_name}</div>
-            <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 1 }}>{client.state || client.country}</div>
-            <div style={{ fontSize: 12, color: 'var(--t2)' }}>{displayPhone}</div>
+
+      <div className="shipping-label-body">
+        <div className="shipping-label-hero">
+          <div className="shipping-label-mark">
+            <span>Shipping Mark</span>
+            <strong>{client.shipping_mark}</strong>
+            <small>Write or paste this exact mark on every carton.</small>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ padding: 5, background: '#fff', border: '1px solid var(--line)', borderRadius: 8 }}>
-              <QRCode value={payload} size={84} fg="#0A1628" />
-            </div>
-            <div style={{ fontSize: 8.5, color: 'var(--t3)', marginTop: 4, letterSpacing: 0.4 }}>SCAN TO TRACK</div>
-            <div style={{ fontSize: 8.5, color: 'var(--teal-d)', marginTop: 2, fontWeight: 700 }}>{client.shipping_mark}</div>
+          <div className="shipping-label-qr">
+            <div><QRCode value={payload} size={84} fg="#0A1628" /></div>
+            <span>Scan Label</span>
           </div>
         </div>
-        {shipmentType && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><TypePill type={shipmentType} /></div>}
-        <div className="shipping-label-mark">
-          <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>Shipping Mark</div>
-          <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 4, color: '#fff', fontFamily: 'Space Grotesk,sans-serif', marginTop: 3 }}>{client.shipping_mark}</div>
+
+        <div className="shipping-label-details">
+          <div className="shipping-label-panel">
+            <span className="shipping-label-kicker">Client</span>
+            <strong>{client.full_name}</strong>
+            <small>{client.state || client.country || 'Nigeria'} - {displayPhone}</small>
+          </div>
+          <div className="shipping-label-panel shipping-label-panel-destination">
+            <span className="shipping-label-kicker">{warehouse.heading}</span>
+            <strong>{warehouse.name || 'Receiving warehouse details pending'}</strong>
+            {warehouse.address && <small>{warehouse.address}</small>}
+            {warehouse.phone && <small className="shipping-label-phone"><Icons.phone size={13} />{warehouse.phone}</small>}
+          </div>
         </div>
+
         <div className="shipping-label-warning">
-          <strong>重要提醒</strong>
-          <span>请务必将此唛头标签贴在每一个包裹上。</span>
-        </div>
-        <div style={{ borderTop: '1px dashed var(--line2)', marginTop: 14, paddingTop: 12 }}>
-          <div style={{ fontSize: 9.5, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 4 }}>{warehouse.heading}</div>
-          <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--t1)' }}>{warehouse.name || 'Receiving warehouse details pending'}</div>
-          {warehouse.address && <div style={{ fontSize: 11.5, color: 'var(--t2)', marginTop: 1 }}>{warehouse.address}</div>}
-          {warehouse.phone && <div style={{ fontSize: 11.5, color: 'var(--teal-d)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Icons.phone size={12} color="var(--teal-d)" />{warehouse.phone}</div>}
+          <strong>Important</strong>
+          <span>Goods without this shipping mark may be delayed, mixed up, or impossible to identify.</span>
         </div>
       </div>
     </div>
@@ -504,6 +502,7 @@ export function BottomNav({ tabs, active, onChange }) {
               {isComponent
                 ? <Icon size={20} color={on ? 'var(--teal-d)' : 'var(--t3)'} />
                 : <span style={{ fontSize: 18 }}>{Icon || t.icon}</span>}
+              {t.badge > 0 && <span className="bottomnav-badge">{t.badge > 99 ? '99+' : t.badge}</span>}
             </span>
             <span className="bottomnav-label">{t.label}</span>
           </button>

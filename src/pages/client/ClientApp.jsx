@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { getClientPortal, getClientWallet, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
+import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
@@ -54,6 +54,8 @@ export default function ClientApp() {
   const [topUpProof, setTopUpProof] = useState(null)
   const [submittingTopUp, setSubmittingTopUp] = useState(false)
   const chatListRef = useRef(null)
+  const knownMessageIdsRef = useRef(new Set())
+  const messagesLoadedRef = useRef(false)
 
   const loadWallet = useCallback(async () => {
     if (!clientSessionToken) {
@@ -97,12 +99,27 @@ export default function ClientApp() {
     return () => cancelAnimationFrame(frame)
   }, [messages, tab])
 
+  useEffect(() => {
+    if (tab !== 'chat' || !clientSessionToken) return
+    const unread = messages.some(message => message.sender !== 'client' && !message.is_read)
+    if (!unread) return
+    setMessages(current => current.map(message => message.sender !== 'client' ? { ...message, is_read: true } : message))
+    markClientMessagesRead(clientSessionToken).catch(() => toast.error('Could not clear the message notification'))
+  }, [tab, clientSessionToken, messages])
+
   const loadAll = async (showLoader = true) => {
     if (showLoader) setLoading(true)
     try {
       const data = await getClientPortal(clientSessionToken)
       setGoods(data.goods || []); setAnnouncements(data.announcements || []); setSuppliers(data.suppliers || [])
-      setMessages(data.messages || []); setReceipts(data.receipts || []); setPurchaseRequests(data.purchase_requests || [])
+      const nextMessages = data.messages || []
+      if (messagesLoadedRef.current) {
+        const newReplies = nextMessages.filter(message => message.sender !== 'client' && !knownMessageIdsRef.current.has(message.id))
+        if (newReplies.length && tab !== 'chat') toast(`New message: ${newReplies[newReplies.length - 1].message.slice(0, 80)}`, { icon: '💬', duration: 5000 })
+      }
+      knownMessageIdsRef.current = new Set(nextMessages.map(message => message.id))
+      messagesLoadedRef.current = true
+      setMessages(nextMessages); setReceipts(data.receipts || []); setPurchaseRequests(data.purchase_requests || [])
       setSettings(data.settings || {})
     } catch (error) {
       if (showLoader) toast.error(error.message || 'Could not load your client portal')
@@ -264,7 +281,7 @@ export default function ClientApp() {
     { id: 'home', label: 'Home', Icon: Home },
     { id: 'goods', label: 'My Goods', Icon: Package },
     { id: 'receipts', label: 'Receipts', Icon: ReceiptText },
-    { id: 'chat', label: 'Messages', Icon: MessageCircle },
+    { id: 'chat', label: 'Messages', Icon: MessageCircle, badge: messages.filter(message => message.sender !== 'client' && !message.is_read).length },
     { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
   const activeNav = ['label', 'suppliers', 'purchase', 'wallet'].includes(tab) ? 'more' : tab
@@ -272,7 +289,7 @@ export default function ClientApp() {
   const inWarehouse = goods.filter(g => g.status === 'in_warehouse').length
   const inTransit = goods.filter(g => g.status === 'in_transit').length
   const delivered = goods.filter(g => g.status === 'delivered').length
-  const unreadMsgs = messages.filter(m => m.sender !== 'client').length
+  const unreadMsgs = messages.filter(m => m.sender !== 'client' && !m.is_read).length
   const currentShipment = goods.find(g => g.status !== 'delivered') || goods[0]
   const LabelMethodPicker = () => <div className="tab-row" style={{ marginBottom: 14 }}><button className={`tab-btn ${labelShipmentType === 'sea' ? 'active' : ''}`} onClick={() => setLabelShipmentType('sea')}>Sea Freight</button><button className={`tab-btn ${labelShipmentType === 'air' ? 'active' : ''}`} onClick={() => setLabelShipmentType('air')}>Air Freight</button></div>
 

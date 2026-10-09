@@ -154,6 +154,10 @@ export function sendClientPortalMessage(sessionToken, message) {
   return invokeClientPortal(sessionToken, { body: { action: 'send_message', message } })
 }
 
+export function markClientMessagesRead(sessionToken) {
+  return invokeClientPortal(sessionToken, { body: { action: 'mark_messages_read' } })
+}
+
 export function submitClientPurchaseRequest(sessionToken, payload) {
   return invokeClientPortal(sessionToken, { body: { action: 'submit_purchase_request', ...payload } })
 }

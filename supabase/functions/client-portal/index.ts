@@ -115,6 +115,11 @@ Deno.serve(async req => {
       return error ? json({ error: 'Could not send your message.' }, 500) : json({ message: data })
     }
 
+    if (action === 'mark_messages_read') {
+      const { error } = await admin.from('messages').update({ is_read: true }).eq('client_id', clientId).neq('sender', 'client').eq('is_read', false)
+      return error ? json({ error: 'Could not clear message notifications.' }, 500) : json({ success: true })
+    }
+
     if (action === 'submit_purchase_request') {
       const platform = text(body.platform, 20).toLowerCase()
       const productLink = marketplaceUrl(body.product_link)

@@ -43,7 +43,12 @@ export default function StaffApp() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'goods' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
+        if (payload.eventType === 'INSERT' && payload.new?.sender === 'client') {
+          toast(`New client message: ${String(payload.new.message || '').slice(0, 80)}`, { icon: '💬', duration: 5000 })
+        }
+        scheduleReload()
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts' }, scheduleReload)
       .subscribe()
 
@@ -133,6 +138,15 @@ export default function StaffApp() {
     loadAll(false)
   }
 
+  const openMessageThread = async client => {
+    setShowMsgThread(client)
+    const unreadIds = messages.filter(message => message.client_id === client.id && message.sender === 'client' && !message.is_read).map(message => message.id)
+    if (!unreadIds.length) return
+    setMessages(current => current.map(message => unreadIds.includes(message.id) ? { ...message, is_read: true } : message))
+    const { error } = await supabase.from('messages').update({ is_read: true }).in('id', unreadIds)
+    if (error) toast.error('Could not clear the message notification')
+  }
+
   const copyMessage = async text => {
     try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
     catch { toast.error('Could not copy this message') }
@@ -156,7 +170,7 @@ export default function StaffApp() {
     { id: 'clients', label: 'Clients', Icon: Users },
     { id: 'goods', label: 'Goods', Icon: Package },
     { id: 'scan', label: 'Scan', Icon: ScanLine },
-    { id: 'messages', label: 'Messages', Icon: MessageCircle },
+    { id: 'messages', label: 'Messages', Icon: MessageCircle, badge: messages.filter(message => message.sender === 'client' && !message.is_read).length },
     { id: 'finance', label: 'Finance', Icon: Wallet },
   ].filter(item => hasPermission(item.id))
 
@@ -310,7 +324,8 @@ export default function StaffApp() {
             <SectionHeader title="Client Messages" />
             {clientThreads.length === 0 ? <EmptyState icon="chat" title="No messages yet" /> : clientThreads.map(client => {
               const lastMessage = client.messages[client.messages.length - 1]
-              return <button key={client.id} className="more-menu-item" onClick={() => setShowMsgThread(client)}><span className="more-menu-icon"><MessageCircle size={21} /></span><span><strong>{client.full_name}</strong><small>{lastMessage?.message}</small></span><span className="more-menu-arrow">›</span></button>
+              const unreadCount = client.messages.filter(message => message.sender === 'client' && !message.is_read).length
+              return <button key={client.id} className="more-menu-item" onClick={() => openMessageThread(client)}><span className="more-menu-icon"><MessageCircle size={21} /></span><span><strong>{client.full_name}</strong><small>{lastMessage?.message}</small></span>{unreadCount > 0 && <span className="message-unread-badge">{unreadCount}</span>}<span className="more-menu-arrow">›</span></button>
             })}
           </>
         )}

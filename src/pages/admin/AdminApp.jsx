@@ -177,7 +177,12 @@ export default function AdminApp() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
+        if (payload.eventType === 'INSERT' && payload.new?.sender === 'client') {
+          toast(`New client message: ${String(payload.new.message || '').slice(0, 80)}`, { icon: '💬', duration: 5000 })
+        }
+        scheduleReload()
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_accounts' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, scheduleReload)
@@ -232,7 +237,7 @@ export default function AdminApp() {
     const totalCbm = g.reduce((s, x) => s + (parseFloat(x.cbm) || 0), 0)
     const paidIncome = rec.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.total) || 0), 0)
     const totalExpenses = exp.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)
-    setStats({ clients: c.length, goods: g.length, totalCbm: totalCbm.toFixed(2), inTransit: g.filter(x=>x.status==='in_transit').length, delivered: g.filter(x=>x.status==='delivered').length, receipts: rec.length, containers: cont.length, messages: msg.filter(m=>m.sender==='client').length, purchases: purchases.filter(request => !['purchased', 'unavailable', 'cancelled'].includes(request.status)).length, paidIncome, totalExpenses, netBalance: paidIncome - totalExpenses })
+    setStats({ clients: c.length, goods: g.length, totalCbm: totalCbm.toFixed(2), inTransit: g.filter(x=>x.status==='in_transit').length, delivered: g.filter(x=>x.status==='delivered').length, receipts: rec.length, containers: cont.length, messages: msg.filter(m => m.sender === 'client' && !m.is_read).length, purchases: purchases.filter(request => !['purchased', 'unavailable', 'cancelled'].includes(request.status)).length, paidIncome, totalExpenses, netBalance: paidIncome - totalExpenses })
     setShowContainerDetail(prev => prev ? (cont.find(x => x.id === prev.id) || prev) : prev)
     setShowReceiptView(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
     setShowReceiptEdit(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
@@ -439,6 +444,16 @@ export default function AdminApp() {
     await supabase.from('messages').insert({ client_id: showMsgThread.id, sender: 'admin', message: replyText.trim() })
     setReplyText('')
     loadAll()
+  }
+
+  const openMessageThread = async client => {
+    setShowMsgThread(client)
+    const unreadIds = messages.filter(message => message.client_id === client.id && message.sender === 'client' && !message.is_read).map(message => message.id)
+    if (!unreadIds.length) return
+    setMessages(current => current.map(message => unreadIds.includes(message.id) ? { ...message, is_read: true } : message))
+    setStats(current => ({ ...current, messages: Math.max(0, (current.messages || 0) - unreadIds.length) }))
+    const { error } = await supabase.from('messages').update({ is_read: true }).in('id', unreadIds)
+    if (error) toast.error('Could not clear the message notification')
   }
 
   const copyMessage = async text => {
@@ -916,7 +931,7 @@ export default function AdminApp() {
     hasPermission('goods') && { id: 'goods', label: 'Goods', Icon: Package },
     hasPermission('scan') && { id: 'tracking', label: 'Track', Icon: Barcode },
     (hasPermission('finance') || hasPermission('receipts')) && { id: 'finance', label: hasPermission('finance') ? 'Finance' : 'Receipts', Icon: Wallet },
-    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages') || hasPermission('purchases') || hasPermission('finance')) && { id: 'more', label: 'More', Icon: MoreHorizontal },
+    (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages') || hasPermission('purchases') || hasPermission('finance')) && { id: 'more', label: 'More', Icon: MoreHorizontal, badge: messages.filter(message => message.sender === 'client' && !message.is_read).length },
   ].filter(Boolean)
   const moreTabIds = [
     hasPermission('clients') && 'clients',
@@ -1475,7 +1490,7 @@ export default function AdminApp() {
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Client Messages" />
             {clientThreads.length === 0 ? <EmptyState icon="chat" title="No messages yet" /> : clientThreads.map(c => (
-              <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowMsgThread(c)}>
+              <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => openMessageThread(c)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--navy)', color: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
                     {c.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
@@ -1486,9 +1501,9 @@ export default function AdminApp() {
                   </div>
                   <div style={{ flexShrink: 0, textAlign: 'right' }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtAgo(c.lastMsg?.created_at)}</div>
-                    {c.msgs.filter(m => m.sender === 'client').length > 0 && (
+                    {c.msgs.filter(m => m.sender === 'client' && !m.is_read).length > 0 && (
                       <div style={{ background: 'var(--danger)', color: 'var(--white)', borderRadius: '50%', width: 20, height: 20, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 4, marginLeft: 'auto' }}>
-                        {c.msgs.filter(m => m.sender === 'client').length}
+                        {c.msgs.filter(m => m.sender === 'client' && !m.is_read).length}
                       </div>
                     )}
                   </div>
