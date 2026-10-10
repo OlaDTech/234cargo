@@ -20,6 +20,14 @@ Deno.serve(async req => {
     const raw = await req.text()
     if (raw.length > 20000) return reply({error:'Order is too large'},413)
     const body = JSON.parse(raw)
+    if (body.action === 'cancel') {
+      if (!/^[0-9a-f-]{36}$/i.test(body.order_id || '')) return reply({error:'Invalid order'},400)
+      const {data,error} = await db.from('store_orders').update({status:'cancelled'})
+        .eq('id',body.order_id).eq('client_id',session.client_id).eq('status','pending').select('id').maybeSingle()
+      if(error) return reply({error:'Unable to cancel order'},500)
+      if(!data) return reply({error:'Only your pending orders can be cancelled. Refresh to see the latest status.'},409)
+      return reply({id:data.id})
+    }
     if (!Array.isArray(body.items) || !body.items.length || body.items.length > 50 || !/^[0-9a-f-]{36}$/i.test(body.request_id || '')) return reply({error:'Invalid order'},400)
     const {data,error:orderError} = await db.rpc('place_store_order',{p_client:session.client_id,p_request:body.request_id,p_items:body.items,p_notes:String(body.notes || '').slice(0,1000)})
     if (orderError) return reply({error:orderError.message},400)

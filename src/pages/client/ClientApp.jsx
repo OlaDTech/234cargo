@@ -330,7 +330,7 @@ export default function ClientApp() {
   const LabelMethodPicker = () => <div className="tab-row" style={{ marginBottom: 14 }}><button className={`tab-btn ${labelShipmentType === 'sea' ? 'active' : ''}`} onClick={() => setLabelShipmentType('sea')}>Sea Freight</button><button className={`tab-btn ${labelShipmentType === 'air' ? 'active' : ''}`} onClick={() => setLabelShipmentType('air')}>Air Freight</button></div>
 
   return (
-    <div className="app-shell client-app">
+    <div className={`app-shell client-app${tab === 'store' ? ' store-shell' : ''}`}>
       <TopNav role="Client Portal" title={settings.company_name || '234Cargo Logistics'}
         right={
           <div className="client-header-actions">

@@ -1124,7 +1124,7 @@ export default function AdminApp() {
   const pendingWalletTopUps = walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${tab === 'store' ? ' store-shell' : ''}`}>
       <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers & Air Batches' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'wallet' ? 'Client Prepaid Balances' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

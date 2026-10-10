@@ -1,5 +1,17 @@
 # 234Cargo storefront
 
+## Store management update
+
+Apply `supabase/migrations/202610100004_store_management.sql` in SQL Editor to enable admin-only product deletion. Redeploy the `storefront` Edge Function to enable clients to cancel their own pending orders. Do not rerun the original create-table migration.
+
+The store now expands to a desktop grid and keeps a two-column mobile catalog. Admins can create, edit, publish, unpublish, duplicate as a draft and delete products. Product deletion removes the catalog entry but leaves historical order snapshots intact. Images are retained because duplicated products may share them.
+
+Clients can filter by category, supplier and currency, sort by name or price, remove individual cart lines, clear the cart and return to their saved cart on the same browser. Carts are stored separately for each client. Price sorting groups by currency; no currency conversions are implied. Order history can be filtered by status. Catalog browsing remains available when the order endpoint is unavailable.
+
+After deployment verify: a staff product DELETE is denied; an admin can delete a disposable test product; clients cannot cancel another client's order; only pending orders can be cancelled; cart quantities survive navigation and do not carry across different client accounts. Live backend checks require the SQL and function deployment.
+
+Checkout remains an order-for-confirmation flow. Card/mobile-money payment collection, live stock reservation, variants, discounts and automatic delivery rates still need separate implementation.
+
 Admins: open More → Storefront & Orders. Add a product, upload a photo, set its price and currency, then enable Publish for clients. Unpublish products by editing and clearing that checkbox. Historical orders retain their original product names and prices.
 
 Clients: open Shop our products on Home or More → Storefront. Browse, search, filter by category, view product details, add quantities to the cart and place an order. Orders await manual confirmation. Checkout does not collect payment or include shipping charges. Orders with different currencies must be placed separately.
