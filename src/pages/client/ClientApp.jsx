@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2, Bell } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import Storefront from '../../components/Storefront'
+const Storefront = lazy(() => import('../../components/Storefront'))
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
@@ -103,8 +103,10 @@ export default function ClientApp() {
   }, [tab, clientSessionToken, loadWallet])
 
   useEffect(() => {
-    const interval = setInterval(() => loadAll(false), 15000)
-    return () => clearInterval(interval)
+    const refreshVisible = () => { if (document.visibilityState === 'visible') loadAll(false) }
+    const interval = setInterval(refreshVisible, 15000)
+    document.addEventListener('visibilitychange', refreshVisible)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', refreshVisible) }
   }, [clientSessionToken])
 
   useEffect(() => {
@@ -437,7 +439,7 @@ export default function ClientApp() {
           </>
         )}
 
-        {tab === 'store' && <Storefront />}
+        {tab === 'store' && <Suspense fallback={<SkeletonList n={3}/>}><Storefront /></Suspense>}
         {tab === 'home' && <button className="client-purchase-card" onClick={()=>setTab('store')}><span className="client-purchase-icon"><ShoppingBag size={22}/></span><span className="client-purchase-copy"><small>234Cargo Marketplace</small><strong>Shop our products</strong><em>Browse the catalog, add to cart and place an order.</em></span><ArrowRight size={18}/></button>}
         {tab === 'more' && (
           <>

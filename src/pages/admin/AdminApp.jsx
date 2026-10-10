@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { LayoutDashboard, Users, Package, Ship, Settings, MessageCircle, LogOut, FileText, Boxes, CheckCircle2, ReceiptText, Container, Wallet, Pencil, Search, Download, Trash2, Barcode, QrCode, MoreHorizontal, ArrowLeft, Copy, Clipboard, RefreshCw, ShoppingCart, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { approveWalletCashTopup, createClientRecord, createWalletCashTopup, payWalletPurchase, payWalletReceipt, recordWalletEntry, supabase, updateClient, uploadGoodsPhoto, uploadSupplierPhoto } from '../../lib/supabase'
@@ -6,7 +6,7 @@ import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, E
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
-import Storefront from '../../components/Storefront'
+const Storefront = lazy(() => import('../../components/Storefront'))
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
 import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
@@ -175,6 +175,7 @@ export default function AdminApp() {
   const [adminLabelType, setAdminLabelType] = useState('sea')
   const [settingsLabelType, setSettingsLabelType] = useState('sea')
   const reloadTimer = useRef(null)
+  const loadSequence = useRef(0)
   const messageListRef = useRef(null)
 
   useEffect(() => {
@@ -228,7 +229,9 @@ export default function AdminApp() {
   }, [messages, showMsgThread])
 
   const loadAll = async (showLoader = true, syncForms = true) => {
+    const sequence = ++loadSequence.current
     if (showLoader) setLoading(true)
+    try {
     const results = await Promise.all([
       supabase.from('clients').select('*').order('created_at', { ascending: false }),
       supabase.from('goods').select('*,client:clients(full_name,phone,shipping_mark)').order('created_at', { ascending: false }),
@@ -244,6 +247,9 @@ export default function AdminApp() {
       hasPermission('finance') ? supabase.from('wallet_accounts').select('*,client:clients(full_name,phone,shipping_mark)').order('updated_at', { ascending: false }) : Promise.resolve({ data: [] }),
       hasPermission('finance') ? supabase.from('wallet_transactions').select('*,client:clients(full_name,phone,shipping_mark)').order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
     ])
+    if (sequence !== loadSequence.current) return
+    const failed = results.find(result => result.error)
+    if (failed) throw failed.error
     const [c, g, cont, rec, exp, ann, sup, msg, purchases, cfg, staff, walletAccountRows, walletTransactionRows] = results.map(r => r.data || [])
     setClients(c); setGoods(g); setContainers(cont); setReceipts(rec)
     setExpenses(exp)
@@ -262,7 +268,11 @@ export default function AdminApp() {
     setShowReceiptEdit(prev => prev ? (rec.find(x => x.id === prev.id) || prev) : prev)
     setShowMsgThread(prev => prev ? (c.find(x => x.id === prev.id) || prev) : prev)
     setShowPurchaseEdit(prev => prev ? (purchases.find(x => x.id === prev.id) || prev) : prev)
-    if (showLoader) setLoading(false)
+    } catch (error) {
+      if (sequence === loadSequence.current) toast.error('Could not refresh the workspace. Your existing view has been kept. Please retry.', { id: 'workspace-load-error' })
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false)
+    }
   }
 
   const saveSettings = async () => {
@@ -1124,7 +1134,7 @@ export default function AdminApp() {
   const pendingWalletTopUps = walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length
 
   return (
-    <div className={`app-shell${tab === 'store' ? ' store-shell' : ''}`}>
+    <div className={`app-shell admin-workspace${tab === 'store' ? ' store-shell' : ''}`}>
       <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers & Air Batches' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'wallet' ? 'Client Prepaid Balances' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1271,7 +1281,7 @@ export default function AdminApp() {
           </>
         )}
 
-        {tab === 'store' && isAdmin && <Storefront admin />}
+        {tab === 'store' && isAdmin && <Suspense fallback={<SkeletonList n={3}/>}><Storefront admin /></Suspense>}
         {/* GOODS MANAGEMENT */}
         {tab === 'goods' && hasPermission('goods') && (
           <>

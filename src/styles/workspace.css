@@ -1,0 +1,40 @@
+/* Shared workspace polish, scoped independently of store and print layouts. */
+.workspace-loading { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: #f7f9fc; color: #475569; font-size: 14px; }
+.workspace-loading img { width: 175px; height: 60px; object-fit: contain; }
+.workspace-loading-bar { width: 160px; height: 3px; background: #0e9f8e; transform-origin: left; animation: workspace-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes workspace-pulse { from { transform: scaleX(.3); opacity: .45; } to { transform: scaleX(1); opacity: 1; } }
+@media screen {
+  .app-shell { height: 100dvh; }
+  .app-shell .page { min-height: 0; scrollbar-width: thin; }
+  .app-shell .section-header { gap: 12px; flex-wrap: wrap; }
+  .app-shell .section-header > * { min-width: 0; }
+  .app-shell .btn { white-space: normal; text-align: center; }
+  .app-shell .card { overflow-wrap: anywhere; }
+  .app-shell .topnav { gap: 12px; }
+  .app-shell .topnav > :first-child { min-width: 0; }
+  .app-shell .topnav-title { overflow-wrap: anywhere; }
+  button:focus-visible, a:focus-visible, select:focus-visible { outline: 3px solid #0b7d6f; outline-offset: 3px; }
+  .modal-close { flex-shrink: 0; min-width: 40px; min-height: 40px; }
+  .modal-title { min-width: 0; overflow-wrap: anywhere; }
+  .modal-header { gap: 12px; }
+}
+@media screen and (min-width: 900px) {
+  .admin-workspace { max-width: 1100px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .admin-workspace .page { padding: 28px 36px; }
+  .admin-workspace .topnav { padding: 20px 36px; background: #13243f; box-shadow: none; }
+  .admin-workspace .bottomnav { max-width: none; padding: 10px 28px; }
+  .admin-workspace .bottomnav-item { flex-direction: row; justify-content: center; gap: 7px; min-height: 42px; }
+  .admin-workspace .bottomnav-label { font-size: 13px; }
+  .admin-workspace .stat-grid { grid-template-columns: repeat(4, minmax(0,1fr)); gap: 16px; }
+  .admin-workspace .stat-card { min-width: 0; }
+  .admin-workspace .card { border-radius: 10px; box-shadow: none; }
+  .admin-workspace .finance-table { width: 100%; }
+  .admin-workspace .section-header { margin-bottom: 18px; }
+  .admin-workspace .more-menu-item { padding: 18px 12px; }
+  .modal-overlay { align-items: center; padding: 24px; }
+  .modal-sheet { border-radius: 14px; }
+  .modal-handle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

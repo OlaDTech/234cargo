@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
 import { Flashlight, FlashlightOff } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Icons } from './Icons'
@@ -128,8 +127,11 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
     if (!open) return
     setManual(''); setCamError(''); setScanning(false); setTorchOn(false); setTorchChanging(false); setTorchError('')
     let scanner
+    let cancelled = false
     const start = async () => {
       try {
+        const { Html5Qrcode } = await import('html5-qrcode')
+        if (cancelled) return
         scanner = new Html5Qrcode('oa-qr-box')
         html5Ref.current = scanner
         await scanner.start(
@@ -138,13 +140,14 @@ export function ScannerModal({ open, onClose, onResult, title = 'Scan QR or Barc
           (decoded) => { stopScan(); onResult(decoded.trim()); onClose() },
           () => {}
         )
+        if (cancelled) { await scanner.stop(); scanner.clear(); return }
         setScanning(true)
       } catch {
         setCamError('Camera not available — type or paste below.')
       }
     }
     const t = setTimeout(start, 300)
-    return () => { clearTimeout(t); stopScan() }
+    return () => { cancelled = true; clearTimeout(t); stopScan() }
   }, [open])
 
   const stopScan = async () => {

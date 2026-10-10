@@ -6,5 +6,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/html5-qrcode')) return 'barcode-scanner'
+          if (id.includes('node_modules/@supabase/')) return 'supabase'
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react-vendor'
+        },
+      },
+    },
   },
 })

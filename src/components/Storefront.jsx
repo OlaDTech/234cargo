@@ -79,6 +79,8 @@ export default function Storefront({ admin = false }) {
       const result = await supabase.from('store_products').select('*').order('created_at',{ascending:false})
       if(result.error) throw result.error
       setProducts(result.data || [])
+      // Let clients browse immediately while their order history loads.
+      setLoading(false)
       try {
       if(admin) {
         const result = await supabase.from('store_orders').select('*,client:clients(full_name,shipping_mark)').order('created_at',{ascending:false}).limit(100)

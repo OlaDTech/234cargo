@@ -1,9 +1,13 @@
-import { Component } from 'react'
+import { Component, lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
-import LoginPage from './pages/LoginPage'
-import AdminApp from './pages/admin/AdminApp'
-import ClientApp from './pages/client/ClientApp'
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const AdminApp = lazy(() => import('./pages/admin/AdminApp'))
+const ClientApp = lazy(() => import('./pages/client/ClientApp'))
+
+function WorkspaceLoading() {
+  return <div className="workspace-loading" role="status" aria-live="polite"><img src="/234cargo-logo.svg" alt="234Cargo"/><span className="workspace-loading-bar"/><p>Opening your workspace…</p></div>
+}
 
 class AppErrorBoundary extends Component {
   constructor(props) {
@@ -66,7 +70,7 @@ export default function App() {
             success: { iconTheme: { primary: '#00C9A7', secondary: '#0B1B3E' } },
           }}
         />
-        <Gate />
+        <Suspense fallback={<WorkspaceLoading />}><Gate /></Suspense>
       </AuthProvider>
     </AppErrorBoundary>
   )
