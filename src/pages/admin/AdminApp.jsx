@@ -6,6 +6,7 @@ import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, E
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
+import WorkspaceNav from '../../components/WorkspaceNav'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
@@ -1134,7 +1135,17 @@ export default function AdminApp() {
   const pendingWalletTopUps = walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length
 
   return (
-    <div className={`app-shell admin-workspace${tab === 'store' ? ' store-shell' : ''}`}>
+    <div className={`app-shell admin-workspace workspace-shell${tab === 'store' ? ' store-shell' : ''}`}>
+      <WorkspaceNav active={tab} onChange={setTab} name={profile?.full_name} role={isAdmin ? 'Administrator' : roleLabel(profile?.role)} onSignOut={signOut} items={[
+        ...tabs.filter(item=>item.id!=='more').map(item=>({...item,group:['goods','tracking'].includes(item.id)?'Operations':item.id==='finance'?'Business':'Workspace'})),
+        hasPermission('clients') && {id:'clients',label:'Customers',Icon:Users,group:'Operations'},
+        (hasPermission('goods') || hasPermission('containers')) && {id:'containers',label:'Shipments',Icon:Ship,group:'Operations'},
+        hasPermission('purchases') && {id:'purchases',label:'Purchase requests',Icon:ShoppingCart,group:'Business'},
+        isAdmin && {id:'store',label:'Storefront',Icon:Boxes,group:'Business'},
+        hasPermission('finance') && {id:'wallet',label:'Client balances',Icon:Wallet,group:'Business'},
+        hasPermission('messages') && {id:'messages',label:'Messages',Icon:MessageCircle,group:'Account',badge:messages.filter(m=>m.sender==='client'&&!m.is_read).length},
+        isAdmin && {id:'settings',label:'Settings',Icon:Settings,group:'Account'},
+      ].filter(Boolean)}/>
       <TopNav role={isAdmin ? 'Admin' : roleLabel(profile?.role)} title={tab === 'dashboard' ? (isAdmin ? 'Admin Overview' : 'Operations Overview') : tab === 'goods' ? 'Goods Management' : tab === 'tracking' ? 'Tracking Register' : tab === 'clients' ? 'Clients' : tab === 'containers' ? 'Containers & Air Batches' : tab === 'messages' ? 'Messages' : tab === 'purchases' ? 'Purchase Requests' : tab === 'wallet' ? 'Client Prepaid Balances' : tab === 'finance' ? (hasPermission('finance') ? 'Finance' : 'Receipts') : tab === 'settings' ? 'System Settings' : 'More Tools'}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

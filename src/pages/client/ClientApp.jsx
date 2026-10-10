@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2, Bell } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import WorkspaceNav from '../../components/WorkspaceNav'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -332,7 +333,15 @@ export default function ClientApp() {
   const LabelMethodPicker = () => <div className="tab-row" style={{ marginBottom: 14 }}><button className={`tab-btn ${labelShipmentType === 'sea' ? 'active' : ''}`} onClick={() => setLabelShipmentType('sea')}>Sea Freight</button><button className={`tab-btn ${labelShipmentType === 'air' ? 'active' : ''}`} onClick={() => setLabelShipmentType('air')}>Air Freight</button></div>
 
   return (
-    <div className={`app-shell client-app${tab === 'store' ? ' store-shell' : ''}`}>
+    <div className={`app-shell client-app workspace-shell${tab === 'store' ? ' store-shell' : ''}`}>
+      <WorkspaceNav active={tab} onChange={setTab} name={clientUser?.full_name} role="Client portal" onSignOut={signOut} items={[
+        ...tabs.filter(item=>item.id!=='more'),
+        {id:'store',label:'Shop products',Icon:ShoppingBag,group:'Business'},
+        {id:'purchase',label:'Buy for me',Icon:ShoppingCart,group:'Business'},
+        {id:'wallet',label:'Wallet',Icon:Wallet,group:'Business'},
+        {id:'label',label:'Shipping label',Icon:Tag,group:'Account'},
+        {id:'suppliers',label:'Suppliers',Icon:Warehouse,group:'Account'},
+      ]}/>
       <TopNav role="Client Portal" title={settings.company_name || '234Cargo Logistics'}
         right={
           <div className="client-header-actions">
