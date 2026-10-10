@@ -6,6 +6,7 @@ import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, E
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
+import Storefront from '../../components/Storefront'
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
 import { downloadShippingLabelPdf } from '../../lib/shippingLabelPdf'
@@ -1013,6 +1014,7 @@ export default function AdminApp() {
     (isAdmin || hasPermission('clients') || hasPermission('containers') || hasPermission('messages') || hasPermission('purchases') || hasPermission('finance')) && { id: 'more', label: 'More', Icon: MoreHorizontal, badge: messages.filter(message => message.sender === 'client' && !message.is_read).length },
   ].filter(Boolean)
   const moreTabIds = [
+    isAdmin && 'store',
     hasPermission('clients') && 'clients',
     (hasPermission('goods') || hasPermission('containers')) && 'containers',
     hasPermission('messages') && 'messages',
@@ -1020,7 +1022,7 @@ export default function AdminApp() {
     hasPermission('finance') && 'wallet',
     isAdmin && 'settings',
   ].filter(Boolean)
-  const activeNav = ['clients', 'containers', 'messages', 'purchases', 'wallet', 'settings'].includes(tab) ? 'more' : tab
+  const activeNav = ['store', 'clients', 'containers', 'messages', 'purchases', 'wallet', 'settings'].includes(tab) ? 'more' : tab
 
   useEffect(() => {
     const availableTabIds = [...tabs.map(item => item.id), ...moreTabIds]
@@ -1269,6 +1271,7 @@ export default function AdminApp() {
           </>
         )}
 
+        {tab === 'store' && isAdmin && <Storefront admin />}
         {/* GOODS MANAGEMENT */}
         {tab === 'goods' && hasPermission('goods') && (
           <>
@@ -1370,6 +1373,7 @@ export default function AdminApp() {
 
         {tab === 'more' && (
           <>
+            {isAdmin && <button className="more-menu-item" onClick={()=>setTab('store')}><span className="more-menu-icon"><ShoppingCart size={21}/></span><span><strong>Storefront & Orders</strong><small>Upload products, set prices and manage client orders.</small></span></button>}
             <SectionHeader title="More Tools" />
             {[
               hasPermission('clients') && { id: 'clients', title: 'Client Directory', text: `${clients.length} registered client${clients.length === 1 ? '' : 's'}, with export.`, Icon: Users },

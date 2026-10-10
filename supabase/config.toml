@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.client-portal]
 verify_jwt = false
+
+[functions.storefront]
+verify_jwt = false

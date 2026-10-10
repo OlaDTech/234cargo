@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2, Bell } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import Storefront from '../../components/Storefront'
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
 import toast from 'react-hot-toast'
@@ -319,7 +320,7 @@ export default function ClientApp() {
     { id: 'chat', label: 'Messages', Icon: MessageCircle, badge: messages.filter(message => message.sender !== 'client' && !message.is_read).length },
     { id: 'more', label: 'More', Icon: MoreHorizontal },
   ]
-  const activeNav = ['label', 'suppliers', 'purchase', 'wallet'].includes(tab) ? 'more' : tab
+  const activeNav = ['store', 'label', 'suppliers', 'purchase', 'wallet'].includes(tab) ? 'more' : tab
 
   const inWarehouse = goods.filter(g => g.status === 'in_warehouse').length
   const inTransit = goods.filter(g => g.status === 'in_transit').length
@@ -436,11 +437,14 @@ export default function ClientApp() {
           </>
         )}
 
+        {tab === 'store' && <Storefront />}
+        {tab === 'home' && <button className="client-purchase-card" onClick={()=>setTab('store')}><span className="client-purchase-icon"><ShoppingBag size={22}/></span><span className="client-purchase-copy"><small>234Cargo Marketplace</small><strong>Shop our products</strong><em>Browse the catalog, add to cart and place an order.</em></span><ArrowRight size={18}/></button>}
         {tab === 'more' && (
           <>
             <SectionHeader title="More" />
             {[
               { id: 'wallet', title: 'Request Wallet Top-Up', text: 'Upload transfer proof or report cash paid at our office.', Icon: Wallet },
+              { id: 'store', title: 'Storefront', text: 'Shop products and track your orders.', Icon: ShoppingBag },
               { id: 'purchase', title: 'Buy for Me', text: 'Send one product link with each size, colour, and quantity.', Icon: ShoppingCart },
               { id: 'label', title: 'Shipping Label', text: 'View, print or share your shipping mark label.', Icon: Tag },
               { id: 'suppliers', title: 'Supplier Directory', text: 'Browse the approved supplier directory.', Icon: ShoppingBag },
