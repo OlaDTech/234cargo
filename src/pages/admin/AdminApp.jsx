@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import RecordGoods from '../staff/RecordGoods'
 import WorkspaceNav from '../../components/WorkspaceNav'
+import AdminHub from '../../components/AdminHub'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
@@ -1135,7 +1136,7 @@ export default function AdminApp() {
   const pendingWalletTopUps = walletTransactions.filter(entry => entry.entry_type === 'cash_topup' && entry.status === 'pending').length
 
   return (
-    <div className={`app-shell admin-workspace workspace-shell${tab === 'store' ? ' store-shell' : ''}`}>
+    <div className={`app-shell admin-workspace workspace-shell${tab === 'dashboard' ? ' admin-hub' : ''}${tab === 'store' ? ' store-shell' : ''}`}>
       <WorkspaceNav active={tab} onChange={setTab} name={profile?.full_name} role={isAdmin ? 'Administrator' : roleLabel(profile?.role)} onSignOut={signOut} items={[
         ...tabs.filter(item=>item.id!=='more').map(item=>({...item,group:['goods','tracking'].includes(item.id)?'Operations':item.id==='finance'?'Business':'Workspace'})),
         hasPermission('clients') && {id:'clients',label:'Customers',Icon:Users,group:'Operations'},
@@ -1163,12 +1164,7 @@ export default function AdminApp() {
 
         {/* OVERVIEW */}
         {tab === 'dashboard' && hasPermission('dashboard') && (
-          <>
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Space Grotesk, sans-serif' }}>Hello, {profile?.full_name?.split(' ')[0]} 👋</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>{format(new Date(), 'EEEE, d MMMM yyyy')}</div>
-            </div>
-
+          <AdminHub profile={profile} isAdmin={isAdmin} can={hasPermission} navigate={setTab} recordGoods={()=>setShowRecordGoods(true)} addClient={()=>setShowAddClient(true)} openReceipts={()=>setTab('finance')} unread={messages.filter(m=>m.sender==='client'&&!m.is_read).length} loading={loading}>
             {featuredContainer && (
               <div className="voyage-card">
                 <div className="voyage-topline">
@@ -1236,6 +1232,7 @@ export default function AdminApp() {
             </div>
 
             {isAdmin && <>
+            <details id="admin-team-panel" className="admin-management-panel"><summary>Team roles & permissions</summary>
             <SectionHeader title="Team Roles and Permissions" action={<span style={{ fontSize: 12, color: 'var(--muted)' }}>{staffList.length} members</span>} />
             {staffList.map(s => (
               <div key={s.id} className="card">
@@ -1260,6 +1257,7 @@ export default function AdminApp() {
               </div>
             ))}
 
+            </details>
             {/* Announcements */}
             <SectionHeader title="Announcements" action={<button className="btn btn-sm btn-primary" onClick={() => setShowAddAnn(true)}>+ New</button>} />
             {announcements.map(a => (
@@ -1289,7 +1287,7 @@ export default function AdminApp() {
               </div>
             ))}
             </>}
-          </>
+          </AdminHub>
         )}
 
         {tab === 'store' && isAdmin && <Suspense fallback={<SkeletonList n={3}/>}><Storefront admin /></Suspense>}
