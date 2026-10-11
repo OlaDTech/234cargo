@@ -35,6 +35,7 @@ try {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Home overflows')
       await page.screenshot({ path: path.join(os.tmpdir(), `234cargo-${role}-${width}.png`) })
       await page.getByRole('textbox', { name: 'Search admin tools' }).fill('tracking')
+      if (width < 1000) assert.ok(await page.getByRole('textbox', { name: 'Search admin tools' }).evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 16), 'Mobile search must not trigger iOS small-input zoom')
       assert.equal(await grid.getByRole('button').count(), 1)
       await page.getByRole('button', { name: 'Clear admin search' }).click()
       if (role === 'admin') {

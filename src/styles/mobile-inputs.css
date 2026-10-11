@@ -1,0 +1,9 @@
+/* iOS zooms focused controls below 16px. Keep text readable without disabling
+   browser zoom. Important overrides compact component and inline form styles. */
+@media (max-width: 999px), (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='hidden']):not([type='button']):not([type='submit']):not([type='reset']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

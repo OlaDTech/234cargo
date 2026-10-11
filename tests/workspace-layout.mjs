@@ -26,6 +26,7 @@ try {
     await page.getByRole('button',{name:'Shopping',exact:true}).click()
     assert.equal(await page.locator('.hub-service-grid button').count(),3)
     await page.getByRole('textbox',{name:'Search services or packages'}).fill('receipts')
+    if(width<1000) assert.ok(await page.getByRole('textbox',{name:'Search services or packages'}).evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=16),'Mobile search must not trigger iOS small-input zoom')
     assert.equal(await page.locator('.hub-service-grid button').count(),1)
     await page.getByRole('button',{name:'Clear search',exact:true}).click()
     if(width>=1000) await page.locator('.workspace-sidebar').getByRole('button',{name:'Shop products',exact:true}).click()

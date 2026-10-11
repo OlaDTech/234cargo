@@ -4,6 +4,7 @@ import App from './App.jsx'
 import './styles/global.css'
 import './styles/workspace.css'
 import './styles/design-system.css'
+import './styles/mobile-inputs.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
