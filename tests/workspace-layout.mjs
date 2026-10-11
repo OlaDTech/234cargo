@@ -21,6 +21,13 @@ try {
     await page.goto('http://localhost:5173')
     try { await page.locator('.client-welcome').waitFor({timeout:10000}) }
     catch(error) { console.log(errors, await page.locator('body').innerText()); throw error }
+    await page.screenshot({path:path.join(os.tmpdir(),`234cargo-home-${width}.png`)})
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Home overflows')
+    await page.getByRole('button',{name:'Shopping',exact:true}).click()
+    assert.equal(await page.locator('.hub-service-grid button').count(),3)
+    await page.getByRole('textbox',{name:'Search services or packages'}).fill('receipts')
+    assert.equal(await page.locator('.hub-service-grid button').count(),1)
+    await page.getByRole('button',{name:'Clear search',exact:true}).click()
     if(width>=1000) await page.locator('.workspace-sidebar').getByRole('button',{name:'Shop products',exact:true}).click()
     else { await page.locator('.bottomnav').getByRole('button',{name:'More',exact:true}).click(); await page.getByRole('button',{name:'Storefront Shop products and track your orders.'}).click() }
     await page.getByRole('heading',{name:'Travel accessories'}).waitFor()

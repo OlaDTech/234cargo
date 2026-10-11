@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, Warehouse, Ship, CheckCircle2, ReceiptText, MoreHorizontal, ArrowRight, ArrowLeft, QrCode, Copy, Clipboard, RefreshCw, Download, Wallet, Upload, Plus, Trash2, Bell } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import WorkspaceNav from '../../components/WorkspaceNav'
+import ClientHome from '../../components/ClientHome'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -333,7 +334,7 @@ export default function ClientApp() {
   const LabelMethodPicker = () => <div className="tab-row" style={{ marginBottom: 14 }}><button className={`tab-btn ${labelShipmentType === 'sea' ? 'active' : ''}`} onClick={() => setLabelShipmentType('sea')}>Sea Freight</button><button className={`tab-btn ${labelShipmentType === 'air' ? 'active' : ''}`} onClick={() => setLabelShipmentType('air')}>Air Freight</button></div>
 
   return (
-    <div className={`app-shell client-app workspace-shell${tab === 'store' ? ' store-shell' : ''}`}>
+    <div className={`app-shell client-app workspace-shell${tab === 'home' ? ' client-hub' : ''}${tab === 'store' ? ' store-shell' : ''}`}>
       <WorkspaceNav active={tab} onChange={setTab} name={clientUser?.full_name} role="Client portal" onSignOut={signOut} items={[
         ...tabs.filter(item=>item.id!=='more'),
         {id:'store',label:'Shop products',Icon:ShoppingBag,group:'Business'},
@@ -357,52 +358,7 @@ export default function ClientApp() {
 
       <div className={`page ${tab === 'chat' ? 'page-chat' : ''}`}>
 
-        {/* HOME */}
-        {tab === 'home' && (
-          <>
-            <section className="client-welcome">
-              <div><div className="client-welcome-kicker">Client portal</div><h1>Hello, {clientUser.full_name.split(' ')[0]}</h1><p>Track every package from our China warehouse to Nigeria.</p></div>
-              <button className="client-avatar-button" onClick={() => setTab('more')} aria-label="Open more options">{clientUser.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</button>
-            </section>
-
-            <section className="client-mark-card">
-              <div><span>Your shipping mark</span><strong>{clientUser.shipping_mark}</strong></div>
-              <button onClick={() => setShowLabel(true)}><QrCode size={18} />Label</button>
-            </section>
-
-            {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && <button type="button" className="client-notification-prompt" onClick={enableGoodsNotifications}><Bell size={18} /><span><strong>Get goods alerts</strong><small>Be notified when the warehouse records a new package.</small></span><ArrowRight size={17} /></button>}
-
-            <button type="button" className="client-purchase-card" onClick={() => setTab('purchase')}>
-              <span className="client-purchase-icon"><ShoppingCart size={21} /></span>
-              <span className="client-purchase-copy"><small>Shopping Assistance</small><strong>Buy From China</strong><em>Send a 1688, Taobao, or Pinduoduo link. We buy and ship it for you.</em></span>
-              <ArrowRight size={19} />
-            </button>
-
-            <button type="button" className="client-wallet-card" onClick={() => setTab('wallet')}>
-              <span className="client-wallet-icon"><Wallet size={21} /></span>
-              <span className="client-wallet-copy"><small>Prepaid Balance</small><strong>{walletLoading ? 'Loading balance...' : wallet ? `${formatMoney(walletBalanceFor(wallet, 'NGN'), 'NGN')} / ${formatMoney(walletBalanceFor(wallet, 'RMB'), 'RMB')}` : 'View prepaid balance'}</strong><em>Request a top-up by office cash or bank transfer. Credits are verified before use.</em></span>
-              <ArrowRight size={19} />
-            </button>
-
-            {loading ? <SkeletonList n={2} /> : currentShipment ? (
-              <section className="shipment-focus-card" onClick={() => setSelectedGoods(currentShipment)}>
-                <div className="shipment-focus-top"><div><span>Current shipment</span><h2>{currentShipment.description}</h2></div><StatusPill status={currentShipment.status} /></div>
-                <div className="shipment-focus-meta"><TypePill type={currentShipment.type} />{currentShipment.type === 'sea' && currentShipment.cbm && <span>{currentShipment.cbm} CBM</span>}<span>{fmtDate(currentShipment.created_at)}</span></div>
-                <div className="shipment-progress" aria-label={`Shipment is ${currentShipment.status.replace('_', ' ')}`}><span className="progress-step complete"><i />Warehouse</span><span className={`progress-line ${currentShipment.status !== 'in_warehouse' ? 'complete' : ''}`} /><span className={`progress-step ${currentShipment.status !== 'in_warehouse' ? 'complete' : ''}`}><i />In transit</span><span className={`progress-line ${currentShipment.status === 'delivered' ? 'complete' : ''}`} /><span className={`progress-step ${currentShipment.status === 'delivered' ? 'complete' : ''}`}><i />Delivered</span></div>
-                <div className="shipment-focus-footer"><span>{currentShipment.tracking_no || 'Tracking will be added by the warehouse'}</span><span>View details <ArrowRight size={15} /></span></div>
-              </section>
-            ) : <section className="client-empty-shipment"><Package size={24} /><h2>No shipments yet</h2><p>When your supplier sends goods to our warehouse, they will appear here.</p><button className="btn btn-primary" onClick={() => setShowLabel(true)}>Get your shipping label</button></section>}
-
-            <section className="client-quick-actions"><button onClick={() => setTab('goods')}><Package size={18} /><span>My goods</span><small>{goods.length}</small></button><button onClick={() => setTab('receipts')}><ReceiptText size={18} /><span>Receipts</span><small>{receipts.length}</small></button><button onClick={() => setTab('chat')}><MessageCircle size={18} /><span>Messages</span>{unreadMsgs > 0 && <small>{unreadMsgs}</small>}</button></section>
-
-            <section className="client-summary-grid">
-              {[{ label: 'Warehouse', value: inWarehouse, Icon: Warehouse }, { label: 'In transit', value: inTransit, Icon: Ship }, { label: 'Delivered', value: delivered, Icon: CheckCircle2 }].map(item => <div key={item.label}><item.Icon size={16} /><strong>{item.value}</strong><span>{item.label}</span></div>)}
-            </section>
-
-            <SectionHeader title="Updates" />
-            {announcements.length === 0 ? <div className="client-updates-empty">No updates right now.</div> : announcements.slice(0, 3).map(a => <article key={a.id} className={`client-update ${a.is_important ? 'important' : ''}`}><div><strong>{a.title}</strong><p>{a.body}</p><span>{fmtAgo(a.created_at)}</span></div>{a.is_important && <b>Important</b>}</article>)}
-          </>
-        )}
+        {tab === 'home' && <ClientHome client={clientUser} goods={goods} receipts={receipts} announcements={announcements} unread={unreadMsgs} wallet={wallet} walletLoading={walletLoading} loading={loading} navigate={setTab} showLabel={()=>setShowLabel(true)} selectGoods={setSelectedGoods}/>}
 
         {/* MY GOODS */}
         {tab === 'goods' && (
@@ -449,7 +405,6 @@ export default function ClientApp() {
         )}
 
         {tab === 'store' && <Suspense fallback={<SkeletonList n={3}/>}><Storefront /></Suspense>}
-        {tab === 'home' && <button className="client-purchase-card" onClick={()=>setTab('store')}><span className="client-purchase-icon"><ShoppingBag size={22}/></span><span className="client-purchase-copy"><small>234Cargo Marketplace</small><strong>Shop our products</strong><em>Browse the catalog, add to cart and place an order.</em></span><ArrowRight size={18}/></button>}
         {tab === 'more' && (
           <>
             <SectionHeader title="More" />
