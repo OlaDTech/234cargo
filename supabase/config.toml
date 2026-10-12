@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.storefront]
 verify_jwt = false
+
+[functions.client-register]
+verify_jwt = false

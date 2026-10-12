@@ -12,6 +12,8 @@ try {
       const context = await browser.newContext({ viewport: { width, height: 1000 } })
       const user = { id: '00000000-0000-4000-8000-000000000001', email: 'preview@example.test' }
       const profile = { ...user, full_name: 'Preview Team', role, permissions: ['dashboard', 'goods', 'scan'] }
+      let applicationPending = true
+      let approved = false
       await context.addInitScript(user => {
         const token = btoa(JSON.stringify({ alg: 'HS256' })) + '.' + btoa(JSON.stringify({ sub: user.id, exp: 4070908800 })) + '.test'
         localStorage.setItem('sb-layout-test-auth-token', JSON.stringify({ access_token: token, refresh_token: 'test', expires_at: 4070908800, token_type: 'bearer', user }))
@@ -21,14 +23,31 @@ try {
         let data = []
         if (url.pathname.includes('/profiles')) data = url.searchParams.has('id') ? profile : [profile]
         if (url.pathname.includes('/auth/v1/user')) data = user
+        if (url.pathname.includes('/client_registrations')) data = applicationPending ? [{id:'00000000-0000-4000-8000-000000000002',full_name:'Applicant Example',phone:'+2348012345678',country:'Nigeria',state:'Lagos',created_at:'2026-10-12T08:00:00Z'}] : []
+        if (url.pathname.includes('/rpc/review_client_registration')) {
+          const body = route.request().postDataJSON()
+          assert.equal(body.p_approve,true)
+          applicationPending = false
+          approved = true
+          data = '00000000-0000-4000-8000-000000000003'
+        }
         await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'content-range': '0-0/0' }, body: JSON.stringify(data) })
       })
       const page = await context.newPage()
       const errors = []
       page.on('pageerror', error => errors.push(error.message))
-      await page.goto('http://localhost:5173/#/admin-login')
+      await page.goto(`${process.env.TEST_BASE_URL || 'http://localhost:5173'}/#/admin-login`)
       await page.locator('.admin-hub-home').waitFor()
       const grid = page.locator('.hub-service-grid')
+      if (role === 'admin') {
+        await page.getByText('Applicant Example',{exact:true}).waitFor()
+        page.once('dialog',dialog=>dialog.accept())
+        await page.getByRole('button',{name:'Approve',exact:true}).click()
+        await page.getByText('No pending registrations.').waitFor()
+        assert.equal(approved,true)
+      } else {
+        assert.equal(await page.getByRole('region',{name:'Client registration requests'}).count(),0)
+      }
       assert.equal(await grid.getByRole('button', { name: 'Warehouse', exact: true }).count(), 1)
       assert.equal(await grid.getByRole('button', { name: 'Storefront', exact: true }).count(), role === 'admin' ? 1 : 0)
       assert.equal(await grid.getByRole('button', { name: 'Finance', exact: true }).count(), role === 'admin' ? 1 : 0)

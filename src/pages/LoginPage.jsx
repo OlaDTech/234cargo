@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import { clientSignIn, supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { Icons } from '../components/Icons'
+import ClientRegistration from '../components/ClientRegistration'
 
 const heroImage = 'https://images.unsplash.com/photo-1494412651409-8963ce7935a7?auto=format&fit=crop&w=1800&q=82'
 
@@ -131,6 +132,8 @@ export default function LoginPage() {
 
   const onKey = (event, fn) => { if (event.key === 'Enter') fn() }
 
+  if (view === 'register') return <ClientRegistration onBack={() => openLogin('client')} />
+
   if (view === 'home') {
     const navItems = [
       ['Services', 'services'],
@@ -153,6 +156,7 @@ export default function LoginPage() {
               <button key={id} type="button" className="public-link" onClick={() => scrollToSection(id)}>{label}</button>
             ))}
             <button onClick={() => openLogin('client')} className="public-nav-cta">Client Login</button>
+            <button onClick={() => setView('register')} className="public-nav-cta">Create account</button>
           </div>
         </nav>
 
@@ -312,6 +316,7 @@ export default function LoginPage() {
           {error && <div className="banner banner-error login-error" role="alert">{error}</div>}
           <button className="btn btn-primary btn-full login-submit" onClick={loginAction} disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
           <button type="button" className="login-help-action" onClick={showHelpMessage}>Get login help</button>
+          {mode === 'client' && <button type="button" className="login-help-action" onClick={() => setView('register')}>New customer? Create an account</button>}
         </section>
 
         <aside className="login-benefits" aria-label="234Cargo portal benefits">
