@@ -10,6 +10,7 @@ import WorkspaceNav from '../../components/WorkspaceNav'
 import AdminHub from '../../components/AdminHub'
 import RegistrationQueue from '../../components/RegistrationQueue'
 import PushNotifications from '../../components/PushNotifications'
+import ChatThread from '../../components/ChatThread'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
@@ -135,6 +136,7 @@ export default function AdminApp() {
   const [showReceiptView, setShowReceiptView] = useState(null)
   const [showReceiptEdit, setShowReceiptEdit] = useState(null)
   const [showMsgThread, setShowMsgThread] = useState(null)
+  const [conversationSearch, setConversationSearch] = useState('')
   const [replyText, setReplyText] = useState('')
   const [showAddAnn, setShowAddAnn] = useState(false)
   const [showAddSup, setShowAddSup] = useState(false)
@@ -180,7 +182,7 @@ export default function AdminApp() {
   const [settingsLabelType, setSettingsLabelType] = useState('sea')
   const reloadTimer = useRef(null)
   const loadSequence = useRef(0)
-  const messageListRef = useRef(null)
+  const markingMessagesRead = useRef(false)
 
   useEffect(() => {
     loadAll()
@@ -227,9 +229,15 @@ export default function AdminApp() {
   }, [goodsSort, isAdmin])
 
   useEffect(() => {
-    if (!showMsgThread || !messageListRef.current) return
-    const frame = requestAnimationFrame(() => { messageListRef.current.scrollTop = messageListRef.current.scrollHeight })
-    return () => cancelAnimationFrame(frame)
+    if (!showMsgThread || markingMessagesRead.current || document.visibilityState !== 'visible') return
+    const ids = messages.filter(m => m.client_id === showMsgThread.id && m.sender === 'client' && !m.is_read).map(m => m.id)
+    if (!ids.length) return
+    markingMessagesRead.current = true
+    supabase.from('messages').update({ is_read: true }).in('id', ids).then(({ error }) => {
+      if (error) return
+      setMessages(current => current.map(m => ids.includes(m.id) ? { ...m, is_read: true } : m))
+      setStats(current => ({ ...current, messages: Math.max(0, (current.messages || 0) - ids.length) }))
+    }).catch(() => {}).finally(() => { markingMessagesRead.current = false })
   }, [messages, showMsgThread])
 
   const loadAll = async (showLoader = true, syncForms = true) => {
@@ -535,29 +543,14 @@ export default function AdminApp() {
 
   const sendReply = async () => {
     if (!replyText.trim() || !showMsgThread) return
-    await supabase.from('messages').insert({ client_id: showMsgThread.id, sender: 'admin', message: replyText.trim() })
+    const { data, error } = await supabase.from('messages').insert({ client_id: showMsgThread.id, sender: 'admin', message: replyText.trim() }).select().single()
+    if (error) throw error
+    setMessages(current => [...current.filter(message => message.id !== data.id), data])
     setReplyText('')
-    loadAll()
   }
 
   const openMessageThread = async client => {
     setShowMsgThread(client)
-    const unreadIds = messages.filter(message => message.client_id === client.id && message.sender === 'client' && !message.is_read).map(message => message.id)
-    if (!unreadIds.length) return
-    setMessages(current => current.map(message => unreadIds.includes(message.id) ? { ...message, is_read: true } : message))
-    setStats(current => ({ ...current, messages: Math.max(0, (current.messages || 0) - unreadIds.length) }))
-    const { error } = await supabase.from('messages').update({ is_read: true }).in('id', unreadIds)
-    if (error) toast.error('Could not clear the message notification')
-  }
-
-  const copyMessage = async text => {
-    try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
-    catch { toast.error('Could not copy this message') }
-  }
-
-  const pasteReply = async () => {
-    try { setReplyText(await navigator.clipboard.readText()) }
-    catch { toast.error('Allow clipboard access to paste') }
   }
 
   const addSupplierPhotos = files => {
@@ -1590,8 +1583,10 @@ export default function AdminApp() {
           <>
             <button className="section-back" onClick={() => setTab('more')}><ArrowLeft size={16} />Back</button>
             <SectionHeader title="Client Messages" />
-            {clientThreads.length === 0 ? <EmptyState icon="chat" title="No messages yet" /> : clientThreads.map(c => (
-              <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => openMessageThread(c)}>
+            <input className="input-field" aria-label="Search conversations" placeholder="Search by client, shipping mark or message" value={conversationSearch} onChange={e => setConversationSearch(e.target.value)} />
+            {!clientThreads.some(c => `${c.full_name} ${c.shipping_mark || ''} ${c.lastMsg?.message || ''}`.toLowerCase().includes(conversationSearch.toLowerCase())) && <EmptyState icon="chat" title={conversationSearch ? 'No matching conversations' : 'No messages yet'} />}
+            {clientThreads.filter(c => `${c.full_name} ${c.shipping_mark || ''} ${c.lastMsg?.message || ''}`.toLowerCase().includes(conversationSearch.toLowerCase())).map(c => (
+              <div key={c.id} role="button" tabIndex={0} aria-label={`Open conversation with ${c.full_name}`} className="card" style={{ cursor: 'pointer' }} onClick={() => openMessageThread(c)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMessageThread(c) } }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--navy)', color: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
                     {c.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
@@ -2105,29 +2100,7 @@ export default function AdminApp() {
       {/* Message thread */}
       <Modal open={!!showMsgThread} title={'Chat — ' + showMsgThread?.full_name} onClose={() => { setShowMsgThread(null); setReplyText('') }}>
         {showMsgThread && (
-          <>
-            <div ref={messageListRef} className="chat-list modal-chat-list">
-              {messages.filter(m => m.client_id === showMsgThread.id).map(m => (
-                <div key={m.id} className={`chat-row ${m.sender === 'client' ? 'chat-row-in' : 'chat-row-out'}`}>
-                  <div className="chat-message">
-                    <div className={`chat-meta ${m.sender === 'client' ? '' : 'chat-meta-out'}`}>
-                      {m.sender === 'client' ? showMsgThread.full_name : 'You (Admin)'}
-                    </div>
-                    <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
-                      {m.message}
-                    </div>
-                    <div className={`message-actions ${m.sender === 'client' ? '' : 'message-actions-out'}`}><button onClick={() => copyMessage(m.message)} title="Copy message" aria-label="Copy message"><Copy size={13} /></button><button className="message-delete" onClick={() => deleteMessage(m.id)} title="Delete message" aria-label="Delete message"><Trash2 size={13} /></button></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="chat-composer">
-              <input className="input-field" style={{ margin: 0 }} placeholder="Type a reply…" value={replyText}
-                onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()} />
-              <button className="chat-paste" onClick={pasteReply} title="Paste message" aria-label="Paste message"><Clipboard size={17} /></button>
-              <button className="btn btn-primary chat-send" onClick={sendReply}>Send</button>
-            </div>
-          </>
+          <ChatThread key={showMsgThread.id} title={showMsgThread.full_name} subtitle={showMsgThread.shipping_mark || 'Customer conversation'} messages={messages.filter(m => m.client_id === showMsgThread.id)} isMine={m => m.sender !== 'client'} draft={replyText} setDraft={setReplyText} onSend={sendReply} onDelete={isAdmin ? deleteMessage : undefined} />
         )}
       </Modal>
 

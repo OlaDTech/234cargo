@@ -74,7 +74,7 @@ Deno.serve(async req => {
 
   try {
     const context = await getClientSession(req)
-    if ('error' in context) return json({ error: context.error }, context.error.includes('configuration') ? 500 : 401)
+    if (context.error !== undefined) return json({ error: context.error }, context.error.includes('configuration') ? 500 : 401)
     const { admin, clientId } = context
 
     if (req.method === 'GET') {
@@ -107,6 +107,11 @@ Deno.serve(async req => {
 
     const body = await req.json()
     const action = text(body.action, 40)
+
+    if (action === 'get_messages') {
+      const { data, error } = await admin.from('messages').select('id,sender,message,is_read,created_at').eq('client_id', clientId).order('created_at')
+      return error ? json({ error: 'Could not refresh messages.' }, 500) : json({ messages: data || [] })
+    }
 
     if (action === 'send_message') {
       const message = text(body.message, 2000)

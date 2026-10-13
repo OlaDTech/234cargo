@@ -12,7 +12,7 @@ try {
     subscription={endpoint:'https://web.push.apple.com/test',toJSON:()=>({endpoint:'https://web.push.apple.com/test',keys:{p256dh:'a'.repeat(87),auth:'b'.repeat(22)}}),unsubscribe:async()=>{subscription=null;return true}}
     return subscription
    }}}
-   Object.defineProperty(navigator,'serviceWorker',{value:{register:async()=>registration,ready:Promise.resolve(registration),getRegistration:async()=>registration}})
+   Object.defineProperty(navigator,'serviceWorker',{value:{addEventListener:()=>{},removeEventListener:()=>{},register:async()=>registration,ready:Promise.resolve(registration),getRegistration:async()=>registration}})
    window.PushManager=function(){}
    window.Notification={permission:'default',requestPermission:async()=>{window.Notification.permission='granted';return 'granted'}}
   })

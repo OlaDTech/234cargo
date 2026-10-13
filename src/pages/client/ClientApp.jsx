@@ -4,6 +4,8 @@ import { useAuth } from '../../hooks/useAuth'
 import WorkspaceNav from '../../components/WorkspaceNav'
 import ClientHome from '../../components/ClientHome'
 import PushNotifications from '../../components/PushNotifications'
+import ChatThread from '../../components/ChatThread'
+import { getClientMessages } from '../../lib/supabase'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -57,7 +59,9 @@ export default function ClientApp() {
   const [topUpForm, setTopUpForm] = useState(TOP_UP_DEFAULT)
   const [topUpProof, setTopUpProof] = useState(null)
   const [submittingTopUp, setSubmittingTopUp] = useState(false)
-  const chatListRef = useRef(null)
+  const [chatSyncError, setChatSyncError] = useState(false)
+  const messageRevision = useRef(0)
+  const markingRead = useRef(false)
   const knownGoodsIdsRef = useRef(new Set())
   const goodsLoadedRef = useRef(false)
   const knownMessageIdsRef = useRef(new Set())
@@ -105,25 +109,43 @@ export default function ClientApp() {
   }, [tab, clientSessionToken, loadWallet])
 
   useEffect(() => {
-    const refreshVisible = () => { if (document.visibilityState === 'visible') loadAll(false) }
+    const refreshVisible = () => { if (document.visibilityState === 'visible' && tab !== 'chat') loadAll(false) }
     const interval = setInterval(refreshVisible, 15000)
     document.addEventListener('visibilitychange', refreshVisible)
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', refreshVisible) }
-  }, [clientSessionToken])
+  }, [clientSessionToken, tab])
 
   useEffect(() => {
-    if (tab !== 'chat' || !chatListRef.current) return
-    const frame = requestAnimationFrame(() => { chatListRef.current.scrollTop = chatListRef.current.scrollHeight })
-    return () => cancelAnimationFrame(frame)
-  }, [messages, tab])
+    if (!clientSessionToken) return
+    let stopped = false, busy = false
+    const refresh = async () => {
+      if (busy || document.visibilityState !== 'visible') return
+      busy = true
+      const revision = messageRevision.current
+      try {
+        const data = await getClientMessages(clientSessionToken)
+        if (!stopped && revision === messageRevision.current) { setMessages(data.messages || []); setChatSyncError(false) }
+      } catch { if (!stopped) setChatSyncError(true) }
+      finally { busy = false }
+    }
+    const onPush = event => { if (event.data?.type === '234cargo-update') refresh() }
+    const interval = tab === 'chat' ? setInterval(refresh, 5000) : null
+    if (tab === 'chat') refresh()
+    navigator.serviceWorker?.addEventListener('message', onPush)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { stopped = true; clearInterval(interval); navigator.serviceWorker?.removeEventListener('message', onPush); document.removeEventListener('visibilitychange', refresh) }
+  }, [clientSessionToken, tab])
 
   useEffect(() => {
     if (tab !== 'chat' || !clientSessionToken) return
     const unread = messages.some(message => message.sender !== 'client' && !message.is_read)
-    if (!unread) return
-    rememberReadMessages(messages.filter(message => message.sender !== 'client').map(message => message.id))
-    setMessages(current => current.map(message => message.sender !== 'client' ? { ...message, is_read: true } : message))
-    markClientMessagesRead(clientSessionToken).catch(() => {})
+    if (!unread || markingRead.current || document.visibilityState !== 'visible') return
+    const ids = messages.filter(message => message.sender !== 'client' && !message.is_read).map(message => message.id)
+    markingRead.current = true
+    markClientMessagesRead(clientSessionToken).then(() => {
+      rememberReadMessages(ids)
+      setMessages(current => current.map(message => ids.includes(message.id) ? { ...message, is_read: true } : message))
+    }).catch(() => {}).finally(() => { markingRead.current = false })
   }, [tab, clientSessionToken, messages])
 
   const loadAll = async (showLoader = true) => {
@@ -160,10 +182,9 @@ export default function ClientApp() {
 
   const sendMsg = async () => {
     if (!msgText.trim()) return
-    try {
-      const { message } = await sendClientPortalMessage(clientSessionToken, msgText.trim())
-      setMessages(prev => [...prev, message]); setMsgText('')
-    } catch (error) { toast.error(error.message || 'Failed to send message') }
+    const { message } = await sendClientPortalMessage(clientSessionToken, msgText.trim())
+    messageRevision.current += 1
+    setMessages(prev => [...prev.filter(item => item.id !== message.id), message]); setMsgText('')
   }
 
   const refreshData = async () => {
@@ -208,16 +229,6 @@ export default function ClientApp() {
     } finally {
       setSubmittingTopUp(false)
     }
-  }
-
-  const copyMessage = async text => {
-    try { await navigator.clipboard.writeText(text); toast.success('Message copied') }
-    catch { toast.error('Could not copy this message') }
-  }
-
-  const pasteMessage = async () => {
-    try { setMsgText(await navigator.clipboard.readText()) }
-    catch { toast.error('Allow clipboard access to paste') }
   }
 
   const updatePurchaseOption = (index, field, value) => {
@@ -601,32 +612,7 @@ export default function ClientApp() {
 
         {/* CHAT */}
         {tab === 'chat' && (
-          <div className="chat-layout">
-            <SectionHeader title="Messages" />
-            <div ref={chatListRef} className="chat-list">
-              {loading ? <SkeletonList n={3} /> : messages.length === 0 ? (
-                <EmptyState icon="chat" title="No messages yet" text="Send us a message and our team will get back to you." />
-              ) : messages.map(m => (
-                <div key={m.id} className={`chat-row ${m.sender === 'client' ? 'chat-row-out' : 'chat-row-in'}`}>
-                  <div className="chat-message">
-                    <div className={`chat-meta ${m.sender === 'client' ? 'chat-meta-out' : ''}`}>
-                      {m.sender === 'client' ? 'You' : '234Cargo Team'} · {fmtAgo(m.created_at)}
-                    </div>
-                    <div className={`chat-bubble ${m.sender === 'client' ? 'bubble-client' : 'bubble-admin'}`}>
-                      {m.message}
-                    </div>
-                    <div className={`message-actions ${m.sender === 'client' ? 'message-actions-out' : ''}`}><button onClick={() => copyMessage(m.message)} title="Copy message" aria-label="Copy message"><Copy size={13} /></button></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="chat-composer">
-              <input className="input-field" style={{ margin: 0 }} placeholder="Type a message…" value={msgText}
-                onChange={e => setMsgText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMsg()} />
-              <button className="chat-paste" onClick={pasteMessage} title="Paste message" aria-label="Paste message"><Clipboard size={17} /></button>
-              <button className="btn btn-primary chat-send" onClick={sendMsg}>Send</button>
-            </div>
-          </div>
+          <ChatThread title="234Cargo Team" subtitle="Shipping, goods and account support" messages={messages} isMine={m => m.sender === 'client'} draft={msgText} setDraft={setMsgText} onSend={sendMsg} loading={loading} syncError={chatSyncError} />
         )}
 
       </div>

@@ -92,3 +92,23 @@ mocks cannot prove Apple push delivery. Check `push_deliveries.status` and
 
 References: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/
 and https://supabase.com/docs/guides/functions/schedule-functions
+
+## Immediate dispatch and chat update
+
+Apply `supabase/migrations/202610130001_immediate_push.sql` after the existing
+web-push migration and `push-schedule.sql`. It wakes the sender once per database
+transaction containing new alerts. Keep the minute-based Cron job enabled for
+retries and recovery. Wake-up failure does not prevent saving business records.
+
+Deploy the updated `client-portal` Edge Function before publishing the frontend.
+The new `get_messages` action uses the existing secure client session and only
+returns that client's messages. Active visible client chat refreshes every five
+seconds; a service-worker push also prompts a refresh. Admin chat retains its
+existing Supabase Realtime subscription. This is near-real-time client refresh,
+not a client WebSocket connection. OS/network delivery delays remain possible.
+
+The green-and-white chat includes search, dates, sent/read status, multiline
+composition, preserved failed drafts and scroll-aware new-message navigation.
+Typing indicators and file attachments are not implemented in this update.
+
+Additional checks: `node tests/push-immediate.mjs` and `node tests/chat-ui.mjs`.

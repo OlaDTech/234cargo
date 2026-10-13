@@ -21,4 +21,9 @@ listeners.notificationclick({notification:{close:()=>{}},waitUntil:p=>pending=p}
 await pending
 assert.deepEqual(opened,['/'])
 assert.equal(listeners.fetch,undefined,'Service worker must not cache private requests')
+const updates=[]
+self.clients.matchAll=async()=>[{postMessage:value=>updates.push(value.type)}]
+listeners.push({data:{json:()=>({title:'New message'})},waitUntil:p=>pending=p})
+await pending
+assert.deepEqual(updates,['234cargo-update'],'Push must refresh the open conversation')
 console.log('Service worker notification, fallback, safe click target and no-cache checks passed')

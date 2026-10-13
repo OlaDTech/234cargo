@@ -4,12 +4,14 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 self.addEventListener('push', event => {
   let data = {}
   try { data = event.data?.json() || {} } catch { /* Always display a fallback. */ }
-  event.waitUntil(self.registration.showNotification(String(data.title || '234Cargo').slice(0, 100), {
+  event.waitUntil(Promise.all([self.registration.showNotification(String(data.title || '234Cargo').slice(0, 100), {
     body: String(data.body || 'You have an update. Open 234Cargo to view it.').slice(0, 240),
     icon: '/favicon.svg',
     tag: String(data.tag || '234cargo-update'),
     data: { url: '/' },
-  }))
+  }), self.clients.matchAll({type:'window',includeUncontrolled:true}).then(windows => {
+    for (const client of windows) client.postMessage({type:'234cargo-update'})
+  })]))
 })
 self.addEventListener('notificationclick', event => {
   event.notification.close()

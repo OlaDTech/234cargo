@@ -150,6 +150,10 @@ export function getClientPortal(sessionToken) {
   return invokeClientPortal(sessionToken, { method: 'GET' })
 }
 
+export function getClientMessages(sessionToken) {
+  return invokeClientPortal(sessionToken, { body: { action: 'get_messages' } })
+}
+
 export function sendClientPortalMessage(sessionToken, message) {
   return invokeClientPortal(sessionToken, { body: { action: 'send_message', message } })
 }
