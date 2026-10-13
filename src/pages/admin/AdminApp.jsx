@@ -11,6 +11,7 @@ import AdminHub from '../../components/AdminHub'
 import RegistrationQueue from '../../components/RegistrationQueue'
 import PushNotifications from '../../components/PushNotifications'
 import ChatThread from '../../components/ChatThread'
+import ClientPresence from '../../components/ClientPresence'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
@@ -137,6 +138,8 @@ export default function AdminApp() {
   const [showReceiptEdit, setShowReceiptEdit] = useState(null)
   const [showMsgThread, setShowMsgThread] = useState(null)
   const [conversationSearch, setConversationSearch] = useState('')
+  const [clientActivity, setClientActivity] = useState({})
+  const [presenceCheckedAt, setPresenceCheckedAt] = useState(0)
   const [replyText, setReplyText] = useState('')
   const [showAddAnn, setShowAddAnn] = useState(false)
   const [showAddSup, setShowAddSup] = useState(false)
@@ -239,6 +242,28 @@ export default function AdminApp() {
       setStats(current => ({ ...current, messages: Math.max(0, (current.messages || 0) - ids.length) }))
     }).catch(() => {}).finally(() => { markingMessagesRead.current = false })
   }, [messages, showMsgThread])
+
+  useEffect(() => {
+    if (!isAdmin || (tab !== 'messages' && !showMsgThread)) return
+    let stopped = false, busy = false
+    const refresh = async () => {
+      if (busy || document.visibilityState !== 'visible') return
+      busy = true
+      try {
+        const { data, error } = await supabase.rpc('admin_client_presence')
+        if (error) throw error
+        if (!stopped) {
+          setClientActivity(Object.fromEntries((data || []).map(row => [row.client_id,row])))
+          setPresenceCheckedAt(Date.now())
+        }
+      } catch { if (!stopped) setPresenceCheckedAt(0) }
+      finally { busy = false }
+    }
+    refresh()
+    const interval = setInterval(refresh,15000)
+    document.addEventListener('visibilitychange',refresh)
+    return () => { stopped=true;clearInterval(interval);document.removeEventListener('visibilitychange',refresh) }
+  }, [isAdmin,tab,showMsgThread?.id])
 
   const loadAll = async (showLoader = true, syncForms = true) => {
     const sequence = ++loadSequence.current
@@ -1593,6 +1618,7 @@ export default function AdminApp() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{c.full_name}</div>
+                    {isAdmin && <ClientPresence activity={clientActivity[c.id]} checkedAt={presenceCheckedAt} />}
                     <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.lastMsg?.message}</div>
                   </div>
                   <div style={{ flexShrink: 0, textAlign: 'right' }}>
@@ -2100,7 +2126,7 @@ export default function AdminApp() {
       {/* Message thread */}
       <Modal open={!!showMsgThread} title={'Chat — ' + showMsgThread?.full_name} onClose={() => { setShowMsgThread(null); setReplyText('') }}>
         {showMsgThread && (
-          <ChatThread key={showMsgThread.id} title={showMsgThread.full_name} subtitle={showMsgThread.shipping_mark || 'Customer conversation'} messages={messages.filter(m => m.client_id === showMsgThread.id)} isMine={m => m.sender !== 'client'} draft={replyText} setDraft={setReplyText} onSend={sendReply} onDelete={isAdmin ? deleteMessage : undefined} />
+          <ChatThread key={showMsgThread.id} title={showMsgThread.full_name} subtitle={isAdmin ? <ClientPresence activity={clientActivity[showMsgThread.id]} checkedAt={presenceCheckedAt} /> : showMsgThread.shipping_mark || 'Customer conversation'} messages={messages.filter(m => m.client_id === showMsgThread.id)} isMine={m => m.sender !== 'client'} draft={replyText} setDraft={setReplyText} onSend={sendReply} onDelete={isAdmin ? deleteMessage : undefined} />
         )}
       </Modal>
 
