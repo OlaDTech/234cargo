@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { supabase, getCurrentProfile } from '../lib/supabase'
+import { disablePush } from '../lib/push'
 
 const AuthContext = createContext(null)
 const CLIENT_SESSION_STORAGE_KEY = 'oa_client'
@@ -143,6 +144,7 @@ export function AuthProvider({ children }) {
   }, [user?.id])
 
   const signInStaff = async (email, password) => {
+    await disablePush(clientSessionToken)
     setClientUser(null)
     setClientSessionToken(null)
     localStorage.removeItem(CLIENT_SESSION_STORAGE_KEY)
@@ -160,6 +162,7 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
+    try { await disablePush(clientSessionToken) } catch { console.warn('Could not unsubscribe push. Disable notifications in device settings on shared devices.') }
     if (clientUser) {
       setClientUser(null)
       setClientSessionToken(null)

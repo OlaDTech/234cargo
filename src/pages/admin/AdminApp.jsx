@@ -9,6 +9,7 @@ import RecordGoods from '../staff/RecordGoods'
 import WorkspaceNav from '../../components/WorkspaceNav'
 import AdminHub from '../../components/AdminHub'
 import RegistrationQueue from '../../components/RegistrationQueue'
+import PushNotifications from '../../components/PushNotifications'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { DEFAULT_PERMISSIONS_BY_ROLE, PERMISSIONS, ROLE_OPTIONS, roleLabel } from '../../lib/roles'
 import { downloadReceiptPdf } from '../../lib/receiptPdf'
@@ -1167,6 +1168,7 @@ export default function AdminApp() {
         {tab === 'dashboard' && hasPermission('dashboard') && (
           <AdminHub profile={profile} isAdmin={isAdmin} can={hasPermission} navigate={setTab} recordGoods={()=>setShowRecordGoods(true)} addClient={()=>setShowAddClient(true)} openReceipts={()=>setTab('finance')} unread={messages.filter(m=>m.sender==='client'&&!m.is_read).length} loading={loading}>
             {isAdmin && <RegistrationQueue onApproved={() => loadAll(false)} />}
+            {isAdmin && <PushNotifications />}
             {featuredContainer && (
               <div className="voyage-card">
                 <div className="voyage-topline">

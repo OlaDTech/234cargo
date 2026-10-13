@@ -3,6 +3,7 @@ import { Home, Package, Tag, ShoppingBag, ShoppingCart, MessageCircle, LogOut, W
 import { useAuth } from '../../hooks/useAuth'
 import WorkspaceNav from '../../components/WorkspaceNav'
 import ClientHome from '../../components/ClientHome'
+import PushNotifications from '../../components/PushNotifications'
 const Storefront = lazy(() => import('../../components/Storefront'))
 import { getClientPortal, getClientWallet, markClientMessagesRead, payClientPurchase, payClientReceipt, sendClientPortalMessage, submitClientPurchaseRequest, submitClientTopUpRequest } from '../../lib/supabase'
 import { TopNav, BottomNav, SectionHeader, StatusPill, TypePill, SkeletonList, EmptyState, Modal, ShippingLabel, ReceiptView, PhotoGallery, fmtDate, fmtDateTime, fmtAgo, formatMoney } from '../../components/UI'
@@ -56,7 +57,6 @@ export default function ClientApp() {
   const [topUpForm, setTopUpForm] = useState(TOP_UP_DEFAULT)
   const [topUpProof, setTopUpProof] = useState(null)
   const [submittingTopUp, setSubmittingTopUp] = useState(false)
-  const [notificationPermission, setNotificationPermission] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const chatListRef = useRef(null)
   const knownGoodsIdsRef = useRef(new Set())
   const goodsLoadedRef = useRef(false)
@@ -136,9 +136,6 @@ export default function ClientApp() {
         if (newlyReceived.length) {
           const latest = newlyReceived[0]
           toast.success(`Goods received: ${latest.description}`, { duration: 6000, icon: '📦' })
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification('Goods received at the warehouse', { body: `${latest.description}${latest.tracking_no ? ` · ${latest.tracking_no}` : ''}`, icon: '/favicon.svg', tag: `goods-${latest.id}` })
-          }
         }
       }
       knownGoodsIdsRef.current = new Set(nextGoods.map(item => item.id))
@@ -160,13 +157,6 @@ export default function ClientApp() {
     }
   }
 
-  const enableGoodsNotifications = async () => {
-    if (typeof Notification === 'undefined') { toast.error('Browser notifications are not supported on this device'); return }
-    const permission = await Notification.requestPermission()
-    setNotificationPermission(permission)
-    if (permission === 'granted') toast.success('Goods notifications enabled')
-    else toast('Notifications remain off. You will still see updates inside the app.')
-  }
 
   const sendMsg = async () => {
     if (!msgText.trim()) return
@@ -349,7 +339,7 @@ export default function ClientApp() {
             <div className="client-header-avatar">
               {clientUser.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
             </div>
-            <button className={`client-notification-toggle${notificationPermission === 'granted' ? ' is-enabled' : ''}`} onClick={enableGoodsNotifications} title={notificationPermission === 'granted' ? 'Goods notifications enabled' : 'Enable goods notifications'} aria-label={notificationPermission === 'granted' ? 'Goods notifications enabled' : 'Enable goods notifications'}><Bell size={17} /></button>
+            <button className="client-notification-toggle" onClick={() => setTab('home')} title="Notification settings are on Home" aria-label="Notification settings on Home"><Bell size={17} /></button>
             <button className="client-refresh" onClick={refreshData} disabled={refreshing} title="Refresh data" aria-label="Refresh data"><RefreshCw size={17} style={{ opacity: refreshing ? 0.55 : 1 }} /></button>
             <button className="client-logout" onClick={signOut} title="Log out" aria-label="Log out"><LogOut size={18} /></button>
           </div>
@@ -359,6 +349,7 @@ export default function ClientApp() {
       <div className={`page ${tab === 'chat' ? 'page-chat' : ''}`}>
 
         {tab === 'home' && <ClientHome client={clientUser} goods={goods} receipts={receipts} announcements={announcements} unread={unreadMsgs} wallet={wallet} walletLoading={walletLoading} loading={loading} navigate={setTab} showLabel={()=>setShowLabel(true)} selectGoods={setSelectedGoods}/>}
+        {tab === 'home' && <div style={{margin:'0 14px 24px'}}><PushNotifications /></div>}
 
         {/* MY GOODS */}
         {tab === 'goods' && (

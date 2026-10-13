@@ -1,0 +1,11 @@
+{
+  "id": "/",
+  "name": "234Cargo",
+  "short_name": "234Cargo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#087b55",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

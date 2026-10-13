@@ -12,3 +12,9 @@ verify_jwt = false
 
 [functions.client-register]
 verify_jwt = false
+
+[functions.push-subscribe]
+verify_jwt = false
+
+[functions.push-send]
+verify_jwt = false
